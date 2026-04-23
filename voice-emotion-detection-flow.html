@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Emotion Detection Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 1400px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        
+        .info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .info-box {
+            background: #e8f4f8;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 4px;
+            color: #333;
+        }
+        
+        .info-box h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .info-box ul, .info-box ol {
+            margin-left: 20px;
+            line-height: 2;
+        }
+        
+        .info-box li {
+            margin-bottom: 12px;
+            font-size: 0.95em;
+        }
+        
+        .code-block {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+        
+        .emotion-rules {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+        
+        .emotion-rules h3 {
+            color: #ff8800;
+            margin-bottom: 15px;
+        }
+        
+        .rule-item {
+            background: white;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 3px solid #ffc107;
+        }
+        
+        .rule-item strong {
+            color: #667eea;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            .mermaid {
+                padding: 10px;
+            }
+            
+            .info-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Voice Emotion Detection Flow</h1>
+        <p class="subtitle">Complete workflow from audio recording to emotion classification</p>
+        
+        <div class="mermaid">
+graph TD
+    A["🎤 User Clicks 'Start' Voice Recording"] -->|Requests permission| B["🔊 Microphone Access Granted"]
+    B -->|Starts Web Audio API| C["🎚️ AudioContext + MediaRecorder Setup"]
+    C -->|Analyser node| D["📊 Analyser: FFT Size 256<br/>Real-time frequency analysis"]
+    D -->|Continuous recording| E["🌊 Audio Stream Processing<br/>20-bar waveform display"]
+    
+    F["⏹️ User Clicks 'Stop' Voice Recording"] -->|Stops recording| G["⛔ MediaRecorder Stops<br/>Collects audio chunks"]
+    
+    G -->|Audio blob created| H["📦 Convert Blob → ArrayBuffer<br/>Decode audio data"]
+    
+    H -->|Raw audio samples| I["🔧 Analyze Audio Buffer<br/>Extract acoustic features"]
+    
+    I -->|Feature extraction| J["📈 Feature 1: Energy<br/>RMS: √(Σv²/N) × 1000<br/>Range: 0-100"]
+    
+    I -->|Pitch analysis| K["🎵 Feature 2: Pitch<br/>Zero-Crossing Rate<br/>Range: 0-2400 Hz"]
+    
+    I -->|Spectral analysis| L["🌈 Feature 3: Spectral Centroid<br/>Frequency 'brightness'<br/>Range: 0-8000 Hz"]
+    
+    I -->|Tempo estimate| M["⏱️ Feature 4: Tempo<br/>Energy bursts/sec<br/>Range: 0-100 BPM"]
+    
+    J --> N["🧠 VoiceAnalysisResult<br/>energy: 45-85<br/>pitch: 80-200+<br/>spectralCentroid: 500-3000<br/>tempo: 40-100"]
+    K --> N
+    L --> N
+    M --> N
+    
+    N -->|Rule-based mapping| O["🤔 Emotion Heuristics"]
+    
+    O -->|High Energy + High Pitch| P1["😄 EXCITED<br/>energy &gt; 70, pitch &gt; 200<br/>confidence: 75-90%"]
+    O -->|Medium Energy + Medium Pitch| P2["😊 HAPPY<br/>energy &gt; 50, pitch &gt; 150<br/>confidence: 65-85%"]
+    O -->|Low Energy + Low Pitch| P3["😢 SAD<br/>energy &lt; 30, pitch &lt; 120<br/>confidence: 60-80%"]
+    O -->|High Spectral Centroid| P4["😰 ANXIOUS<br/>spectralCentroid &gt; 2000<br/>confidence: 55-75%"]
+    O -->|Neutral Range| P5["😐 NEUTRAL/CALM<br/>Balanced features<br/>confidence: 55-70%"]
+    
+    P1 --> Q["✨ ModalityResult Created<br/>emotion: Excited<br/>confidence: 85%<br/>scores: [all emotions]"]
+    P2 --> Q
+    P3 --> Q
+    P4 --> Q
+    P5 --> Q
+    
+    Q -->|Stored in React| R["💾 capturedVoiceResult<br/>voiceDone = true<br/>✓ Show badge"]
+    
+    R -->|User interaction| S["▶️ User Clicks 'Analyze'"]
+    
+    S -->|Gathers inputs| T["📦 Results Array<br/>[face, voice, text]"]
+    
+    T -->|Weighted voting| U["⚙️ fuseEmotions Function<br/>face: 45%<br/>voice: 35%<br/>text: 20%"]
+    
+    U -->|Final calculation| V["✨ FusedResult<br/>emotion: [Winner]<br/>confidence: [Score]<br/>intensity: High"]
+    
+    V -->|Navigate| W["🎯 Results Page<br/>Displays final emotion"]
+        </div>
+        
+        <div class="info-section">
+            <div class="info-box">
+                <h3>🎚️ Audio Features Extracted</h3>
+                <ol>
+                    <li><strong>Energy (RMS):</strong> Overall volume/intensity of speech</li>
+                    <li><strong>Pitch (ZCR):</strong> How many times signal crosses zero per second</li>
+                    <li><strong>Spectral Centroid:</strong> "Brightness" of the sound</li>
+                    <li><strong>Tempo:</strong> Speaking rate (bursts per second)</li>
+                </ol>
+                <div class="code-block">
+energy = √(Σ samples² / N) × 1000
+pitch = zero_crossings / length
+centroid = Σ(frequency × magnitude) / Σ(magnitude)
+                </div>
+            </div>
+            
+            <div class="info-box">
+                <h3>💻 Technology Stack</h3>
+                <ul>
+                    <li><strong>MediaRecorder API:</strong> Captures audio stream</li>
+                    <li><strong>Web Audio API:</strong> Decodes and analyzes audio</li>
+                    <li><strong>AudioContext:</strong> Processes raw audio data</li>
+                    <li><strong>AnalyserNode:</strong> Real-time frequency analysis</li>
+                    <li><strong>FFT (Fast Fourier Transform):</strong> Size 256 for speech</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="emotion-rules">
+            <h3>🧭 Emotion Mapping Rules</h3>
+            
+            <div class="rule-item">
+                <strong>😄 EXCITED:</strong> High Energy (>70) + High Pitch (>200 Hz)
+                <br/>💡 Indicates: Enthusiasm, high energy, positive excitement
+                <br/>Confidence: 75-90%
+            </div>
+            
+            <div class="rule-item">
+                <strong>😊 HAPPY:</strong> Medium Energy (>50) + Medium Pitch (>150 Hz)
+                <br/>💡 Indicates: Pleasure, contentment, positive mood
+                <br/>Confidence: 65-85%
+            </div>
+            
+            <div class="rule-item">
+                <strong>😢 SAD:</strong> Low Energy (<30) + Low Pitch (<120 Hz)
+                <br/>💡 Indicates: Sadness, depression, low mood
+                <br/>Confidence: 60-80%
+            </div>
+            
+            <div class="rule-item">
+                <strong>😰 ANXIOUS:</strong> High Spectral Centroid (>2000 Hz)
+                <br/>💡 Indicates: Tension, worry, stress, nervousness
+                <br/>Confidence: 55-75%
+            </div>
+            
+            <div class="rule-item">
+                <strong>😐 NEUTRAL/CALM:</strong> Balanced Features
+                <br/>💡 Indicates: Normal speech, relaxed, peaceful
+                <br/>Confidence: 55-70%
+            </div>
+        </div>
+        
+        <div class="info-box" style="margin-top: 20px; background: #e8f8e8; border-left-color: #28a745;">
+            <h3 style="color: #28a745;">📊 Why These Features Work</h3>
+            <ul>
+                <li><strong>Energy:</strong> Excited/happy people speak louder; sad people speak softly</li>
+                <li><strong>Pitch:</strong> Higher pitch indicates positive emotions; lower pitch indicates sad/calm emotions</li>
+                <li><strong>Spectral Centroid:</strong> Anxious/tense speech has more high-frequency content</li>
+                <li><strong>Speaking Rate:</strong> Excited people speak faster; depressed people speak slower</li>
+                <li><strong>Combination:</strong> Multiple features together give more accurate classification</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

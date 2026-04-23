@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: empathAI-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: emotion_detection
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - empathAI-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: empathAI-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - empathAI-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: empathAI-backend
+    environment:
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      MONGODB_URI: mongodb://root:rootpassword@mongodb:27017/emotion_detection?authSource=admin
+      MONGODB_DB: emotion_detection
+      REDIS_URL: redis://redis:6379/0
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - empathAI-network
+    command: python run.py
+
+networks:
+  empathAI-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  redis_data:

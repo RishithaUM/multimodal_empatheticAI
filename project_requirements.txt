@@ -1,0 +1,109 @@
+================================================================================
+PROJECT REQUIREMENTS
+================================================================================
+
+ USER AUTHENTICATION (Flask Login System)
+Explanation (simple):
+User enters username & password 
+Flask verifies using backend (auth/user_manager.py) 
+If correct → session created 
+Session = “user stays logged in”
+1. Functional Requirements
+The system must perform the following functions:
+Capture multimodal user input:
+Facial input via webcam
+Speech input via microphone
+Text input via chat interface
+Perform preprocessing of input data:
+Face detection and alignment using MTCNN/MediaPipe
+Audio feature extraction (pitch, tone, MFCC)
+Text preprocessing using tokenization
+Implement emotion detection using hybrid models:
+CNN for facial emotion recognition (spatial features)
+BiLSTM for speech emotion analysis (temporal features)
+Transformer for text understanding (contextual features)
+Perform multimodal fusion:
+Combine outputs from face, voice, and text
+Use cross-modal attention to assign importance
+Apply fuzzy logic to handle uncertainty
+Generate emotion-aware responses:
+Use LLM-based or rule-based chat engine
+Incorporate detected emotion into response generation
+Provide empathetic and context-aware replies
+Provide additional user support features:
+Recommend music/videos based on emotion
+Provide motivational messages and affirmations
+Implement distress detection and alert system:
+Detect critical emotional states
+Trigger alerts to guardian via email/SMS
+Maintain user session and personalization:
+Login and authentication
+Language preferences and settings
+ 2. Non-Functional Requirements
+System must support real-time processing
+Ensure high accuracy (target: 90–95%)
+Provide responsive and user-friendly interface
+Ensure data privacy and secure handling
+System should be modular and scalable
+Support multi-language interaction
+ 3. Software Requirements
+Programming Language: Python
+Framework: Flask
+Libraries:
+OpenCV, MediaPipe (face processing)
+PyTorch / TensorFlow (model support)
+Hugging Face Transformers (text processing)
+Frontend:
+HTML, CSS, JavaScript
+APIs:
+Web Speech API (voice)
+Email/SMS API (alerts)
+ 4. Hardware Requirements
+Webcam (for facial input)
+Microphone (for voice input)
+GPU-enabled system (recommended)
+Minimum 8GB RAM
+✅ CNN → face
+✅ BiLSTM → audio
+✅ Transformer → text
+✅ Fusion → attention + fuzzy
+✅ Response → LLM-based
+MULTIMODAL FUSION (IMPORTANT 🔥)
+Explanation:
+Combine: 
+Face 
+Voice 
+Text 
+Final decision:
+Weighted combination 
+Example:
+Face = Sad  
+Voice = Neutral  
+Text = Very Sad  
+Final = Sad
+ AI CHAT ENGINE (LLM / Chatbot)
+Explanation:
+User message → sent to backend 
+LLM generates response 
+ Your system:
+Adds emotion awareness 
+Gives empathetic replies 
+ SPEECH FEATURES (Web Speech API)
+Explanation:
+Speech-to-text → user speaks 
+Text-to-speech → AI talks 
+ CONTENT RECOMMENDATION SYSTEM Explanation:
+Based on emotion: 
+Sad → calm music 
+Happy → energetic songs 
+Personalized suggestions
+EMERGENCY ALERT SYSTEM (Twilio)
+ Explanation:
+If distress detected 
+Send SMS/email 
+ Example:
+“User is in distress, please check”
+
+================================================================================
+TABLES IN THE DOCUMENT:
+================================================================================
