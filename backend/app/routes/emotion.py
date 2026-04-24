@@ -1,7 +1,10 @@
 from flask import Blueprint, request, jsonify, current_app
 from app.models import EmotionRecord, Database
-from app.services import token_required, PermissionService, EmotionAnalysisService
+from app.services import token_required, PermissionService, EmotionAnalysisService, DeepFaceService
 from bson import ObjectId
+import logging
+
+logger = logging.getLogger(__name__)
 
 emotion_bp = Blueprint('emotion', __name__)
 
@@ -184,4 +187,189 @@ def get_current_emotion():
         }), 200
     
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+
+
+# ─── STREAMING ENDPOINTS (Real-time Emotion Detection) ────────────────────────
+
+
+# ─── STREAMING ENDPOINTS (Real-time Emotion Detection) ────────────────────────
+
+@emotion_bp.route('/detect/face/stream', methods=['POST'])
+@token_required
+def detect_face_emotion_stream():
+    """
+    Stream endpoint - analyzes single frame and checks for emotion stability.
+    Used for real-time emotion detection that stops when stable.
+    """
+    try:
+        data = request.get_json()
+        user_id = request.user_id
+        
+        if not data or 'frame' not in data or 'session_id' not in data:
+            return jsonify({'error': 'Frame and session_id required'}), 400
+        
+        frame_data = data.get('frame')
+        session_id = data.get('session_id')
+        
+        # Initialize stability detectors if needed
+        if not hasattr(current_app, 'stability_detectors'):
+            current_app.stability_detectors = {}
+        
+        # Get or create detector for this session
+        if session_id not in current_app.stability_detectors:
+            from app.services.emotion_stability import EmotionStabilityDetector
+            current_app.stability_detectors[session_id] = EmotionStabilityDetector(
+                stability_frames=10,
+                confidence_threshold=0.40
+            )
+        
+        detector = current_app.stability_detectors[session_id]
+        
+        # Initialize DeepFace service if needed
+        if not hasattr(current_app, 'deepface_service'):
+            current_app.deepface_service = DeepFaceService()
+        
+        deepface_service = current_app.deepface_service
+        
+        # Analyze single frame
+        result = deepface_service.analyze_frame(frame_data)
+        
+        if not result.get('success'):
+            frame_number = detector.frame_count + 1 if session_id in current_app.stability_detectors else 0
+            return jsonify({
+                'success': False,
+                'error': result.get('error'),
+                'stable': False,
+                'frame_number': frame_number
+            }), 200
+        
+        # Extract emotion data
+        emotion_data = {
+            'emotion': result['emotion'],
+            'confidence': result['confidence'],
+            'scores': result['scores']
+        }
+        
+        # Add to detector history
+        detector.add_emotion(emotion_data)
+        
+        # Check if stable
+        is_stable = detector.is_stable()
+        stable_emotion = detector.get_stable_emotion()
+        
+        # Clean up session if stable (check exists first)
+        if is_stable and session_id in current_app.stability_detectors:
+            del current_app.stability_detectors[session_id]
+        
+        response = {
+            'success': True,
+            'frame_emotion': result['emotion'],
+            'frame_confidence': result['confidence'],
+            'frame_scores': result['scores'],
+            'frame_number': detector.frame_count,
+            'stable': is_stable,
+            'stable_emotion': stable_emotion,
+            'history_size': len(detector.get_emotion_history()),
+        }
+        
+        # Only include full history if requested (for debugging)
+        if data.get('include_history'):
+            response['emotion_history'] = detector.get_emotion_history()
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"Streaming error: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@emotion_bp.route('/detect/face/stream/test', methods=['POST'])
+def detect_face_emotion_stream_test():
+    """
+    Test endpoint for streaming - analyzes single frame and checks for emotion stability.
+    No auth required for testing.
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'frame' not in data or 'session_id' not in data:
+            return jsonify({'error': 'Frame and session_id required'}), 400
+        
+        frame_data = data.get('frame')
+        session_id = data.get('session_id')
+        
+        # Initialize stability detectors if needed
+        if not hasattr(current_app, 'stability_detectors'):
+            current_app.stability_detectors = {}
+        
+        # Get or create detector for this session
+        if session_id not in current_app.stability_detectors:
+            from app.services.emotion_stability import EmotionStabilityDetector
+            current_app.stability_detectors[session_id] = EmotionStabilityDetector(
+                stability_frames=10,
+                confidence_threshold=0.40
+            )
+        
+        detector = current_app.stability_detectors[session_id]
+        
+        # Initialize DeepFace service if needed
+        if not hasattr(current_app, 'deepface_service'):
+            current_app.deepface_service = DeepFaceService()
+        
+        deepface_service = current_app.deepface_service
+        
+        # Analyze single frame
+        result = deepface_service.analyze_frame(frame_data)
+        
+        if not result.get('success'):
+            frame_number = detector.frame_count + 1 if session_id in current_app.stability_detectors else 0
+            return jsonify({
+                'success': False,
+                'error': result.get('error'),
+                'stable': False,
+                'frame_number': frame_number
+            }), 200
+        
+        # Extract emotion data
+        emotion_data = {
+            'emotion': result['emotion'],
+            'confidence': result['confidence'],
+            'scores': result['scores']
+        }
+        
+        # Add to detector history
+        detector.add_emotion(emotion_data)
+        
+        # Check if stable
+        is_stable = detector.is_stable()
+        stable_emotion = detector.get_stable_emotion()
+        
+        # Clean up session if stable (check exists first)
+        if is_stable and session_id in current_app.stability_detectors:
+            del current_app.stability_detectors[session_id]
+        
+        response = {
+            'success': True,
+            'frame_emotion': result['emotion'],
+            'frame_confidence': result['confidence'],
+            'frame_scores': result['scores'],
+            'frame_number': detector.frame_count,
+            'stable': is_stable,
+            'stable_emotion': stable_emotion,
+            'history_size': len(detector.get_emotion_history()),
+        }
+        
+        # Only include full history if requested (for debugging)
+        if data.get('include_history'):
+            response['emotion_history'] = detector.get_emotion_history()
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"Streaming error: {str(e)}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500

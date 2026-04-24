@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { detectFaceEmotion, detectFaceEmotionMultiFrame } from '@/services/emotionApi';
+import { detectFaceEmotion } from '@/services/emotionApi';
 import type { ModalityResult } from '@/services/emotionApi';
 
 export type CameraStatus = 'idle' | 'requesting' | 'active' | 'error' | 'unsupported';
@@ -97,13 +97,10 @@ export function useFaceDetection(autoDetect = false, intervalMs = 2000): UseFace
   }, [cameraStatus]);
 
   const captureMultiFrame = useCallback(async (options?: { samplingInterval?: number; maxFrames?: number }): Promise<ModalityResult | null> => {
-    if (!videoRef.current || cameraStatus !== 'active') return null;
-    setIsDetecting(true);
-    const result = await detectFaceEmotionMultiFrame(videoRef.current, options);
-    if (result) setLastResult(result);
-    setIsDetecting(false);
-    return result;
-  }, [cameraStatus]);
+    // Multi-frame batch analysis has been moved to useEmotionStream hook for real-time streaming
+    // This hook now only supports single-frame detection via captureFrame
+    return null;
+  }, []);
 
   useEffect(() => {
     return () => {

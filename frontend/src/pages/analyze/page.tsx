@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useFaceDetection } from '@/hooks/useFaceDetection';
+import { useEmotionStream } from '@/hooks/useEmotionStream';
 import { useVoiceAnalysis } from '@/hooks/useVoiceAnalysis';
 import { useTextAnalysis } from '@/hooks/useTextAnalysis';
 import { fuseEmotions } from '@/services/emotionApi';
@@ -110,22 +110,20 @@ function StatusDot({ active, pulse }: { active: boolean; pulse?: boolean }) {
 export default function AnalyzePage() {
   const navigate = useNavigate();
 
-  // ── Face ──────────────────────────────────────────────────────────────────
+  // ── Face with streaming emotion detection ─────────────────────────────────
   const {
     videoRef,
-    cameraStatus,
-    cameraError,
-    lastResult: faceResult,
-    startCamera,
-    stopCamera,
-    captureFrame,
-    captureMultiFrame,
-  } = useFaceDetection(false);
+    status: streamStatus,
+    currentEmotion,
+    frameCount,
+    error: streamError,
+    startStream,
+    stopStream,
+  } = useEmotionStream();
 
   const [faceRecording, setFaceRecording] = useState(false);
   const [faceDone, setFaceDone] = useState(false);
   const [capturedFaceResult, setCapturedFaceResult] = useState<ModalityResult | null>(null);
-  const faceTimer = useTimer(faceRecording);
 
   // ── Voice ─────────────────────────────────────────────────────────────────
   const {
@@ -151,22 +149,47 @@ export default function AnalyzePage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState('');
 
-  // ── Face handlers ─────────────────────────────────────────────────────────
+  // ── Face handlers with streaming emotion detection ────────────────────────
   const handleStartFace = async () => {
     setFaceDone(false);
     setCapturedFaceResult(null);
-    await startCamera();
     setFaceRecording(true);
+    
+    try {
+      console.log('🎬 Starting streaming emotion detection...');
+      await startStream();
+    } catch (err) {
+      console.error('Failed to start stream:', err);
+      setFaceRecording(false);
+    }
   };
 
   const handleStopFace = async () => {
     setFaceRecording(false);
-    // Use multi-frame detection: capture 40 frames over 4 seconds for better accuracy
-    const result = await captureMultiFrame({ samplingInterval: 100, maxFrames: 40 });
-    setCapturedFaceResult(result);
-    setFaceDone(true);
-    stopCamera();
+    stopStream();
+    
+    // If emotion became stable, use the stable emotion result
+    if (currentEmotion?.stable && currentEmotion?.stableEmotion) {
+      const stableResult: ModalityResult = {
+        modality: 'face',
+        emotion: currentEmotion.stableEmotion.emotion,
+        confidence: currentEmotion.stableEmotion.confidence,
+        scores: currentEmotion.stableEmotion.scores,
+      };
+      
+      console.log(`✅ Emotion Stable: ${stableResult.emotion} (${stableResult.confidence}%) after ${frameCount} frames`);
+      setCapturedFaceResult(stableResult);
+      setFaceDone(true);
+    }
   };
+
+  // Auto-stop when emotion becomes stable
+  useEffect(() => {
+    if (faceRecording && streamStatus === 'stable' && currentEmotion?.stable) {
+      console.log(`🛑 Emotion stable detected - auto-stopping recording`);
+      handleStopFace();
+    }
+  }, [streamStatus, currentEmotion?.stable, faceRecording]);
 
   // ── Voice handlers ────────────────────────────────────────────────────────
   const handleStartVoice = async () => {
@@ -288,17 +311,17 @@ export default function AnalyzePage() {
                   </div>
                   <p className="text-gray-500 text-xs mt-0.5">
                     {faceRecording
-                      ? `Recording... ${formatTime(faceTimer.seconds)}`
+                      ? `Monitoring... Frame ${frameCount} · 10 consecutive same emotions needed`
                       : faceDone
-                      ? `Recorded ${formatTime(faceTimer.seconds)} · Ready`
-                      : 'Webcam facial expression analysis'}
+                      ? `Captured ${frameCount} frames · Emotion stable`
+                      : 'Real-time facial expression analysis'}
                   </p>
                 </div>
               </div>
 
               {/* Controls */}
               <div className="flex items-center gap-2">
-                {!faceRecording && !faceDone && cameraStatus === 'idle' && (
+                {!faceRecording && !faceDone && streamStatus === 'idle' && (
                   <button
                     onClick={handleStartFace}
                     disabled={isAnalyzing}
@@ -320,7 +343,7 @@ export default function AnalyzePage() {
                     <div className="w-3 h-3 flex items-center justify-center">
                       <i className="ri-stop-fill text-xs"></i>
                     </div>
-                    Stop · {formatTime(faceTimer.seconds)}
+                    Stop · Frame {frameCount}
                   </button>
                 )}
                 {faceDone && !faceRecording && (
@@ -339,8 +362,8 @@ export default function AnalyzePage() {
               </div>
             </div>
 
-            {/* Camera preview */}
-            {(faceRecording || cameraStatus === 'requesting' || cameraStatus === 'active') && (
+            {/* Camera preview with streaming emotion detection */}
+            {(faceRecording || streamStatus !== 'idle') && (
               <div className="px-5 pb-5">
                 <div
                   className="relative rounded-xl overflow-hidden"
@@ -352,35 +375,44 @@ export default function AnalyzePage() {
                     muted
                     playsInline
                     className="w-full h-full object-cover"
-                    style={{ display: cameraStatus === 'active' ? 'block' : 'none' }}
+                    style={{ display: streamStatus !== 'idle' ? 'block' : 'none' }}
                   />
-                  {cameraStatus !== 'active' && (
+                  {streamStatus === 'idle' && (
                     <div className="w-full h-full flex flex-col items-center justify-center">
-                      {cameraStatus === 'requesting' ? (
-                        <>
-                          <i className="ri-loader-4-line animate-spin text-2xl mb-2" style={{ color: '#8B5CF6' }}></i>
-                          <p className="text-gray-400 text-xs">Starting camera...</p>
-                        </>
-                      ) : cameraStatus === 'error' ? (
-                        <>
-                          <i className="ri-camera-off-line text-2xl text-red-400 mb-2"></i>
-                          <p className="text-red-400 text-xs text-center px-4">{cameraError}</p>
-                        </>
-                      ) : null}
+                      <div className="w-14 h-14 flex items-center justify-center rounded-2xl mb-3" style={{ background: 'rgba(108,99,255,0.08)', border: '1px solid rgba(108,99,255,0.15)' }}>
+                        <i className="ri-camera-line text-2xl" style={{ color: 'rgba(108,99,255,0.5)' }}></i>
+                      </div>
+                      <p className="text-gray-600 text-xs">Click Start to begin emotion detection</p>
+                    </div>
+                  )}
+                  {streamStatus === 'error' && (
+                    <div className="w-full h-full flex flex-col items-center justify-center">
+                      <i className="ri-camera-off-line text-2xl text-red-400 mb-2"></i>
+                      <p className="text-red-400 text-xs text-center px-4">{streamError || 'Camera error'}</p>
                     </div>
                   )}
 
-                  {/* Recording overlay */}
-                  {faceRecording && cameraStatus === 'active' && (
+                  {/* Real-time emotion display overlay */}
+                  {faceRecording && streamStatus === 'streaming' && currentEmotion && (
                     <>
-                      {/* Timer badge */}
+                      {/* Frame counter and status */}
                       <div
                         className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
                         style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', backdropFilter: 'blur(4px)' }}
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block"></span>
-                        {formatTime(faceTimer.seconds)}
+                        Frame {frameCount} · Detecting...
                       </div>
+                      
+                      {/* Current emotion badge */}
+                      <div
+                        className="absolute top-3 right-3 px-3 py-1.5 rounded-lg text-xs font-bold"
+                        style={{ background: 'rgba(108,99,255,0.85)', color: '#fff', backdropFilter: 'blur(4px)' }}
+                      >
+                        <div>{currentEmotion.frameEmotion}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>{currentEmotion.frameConfidence}%</div>
+                      </div>
+                      
                       {/* Face box hint */}
                       <div
                         className="absolute"
@@ -394,7 +426,27 @@ export default function AnalyzePage() {
                           className="absolute -top-5 left-0 text-xs px-2 py-0.5 rounded font-medium"
                           style={{ background: '#6C63FF', color: '#fff' }}
                         >
-                          Face detected
+                          Keep steady...
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* Stable emotion display */}
+                  {streamStatus === 'stable' && currentEmotion?.stableEmotion && (
+                    <>
+                      {/* Success badge */}
+                      <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}>
+                        <div className="text-center">
+                          <div className="w-16 h-16 mx-auto mb-3 flex items-center justify-center rounded-full" style={{ background: 'rgba(0,212,170,0.2)' }}>
+                            <i className="ri-check-line text-3xl" style={{ color: '#00D4AA' }}></i>
+                          </div>
+                          <div className="text-2xl font-bold mb-1" style={{ color: '#00D4AA' }}>
+                            {currentEmotion.stableEmotion.emotion}
+                          </div>
+                          <div className="text-xs text-gray-300">
+                            {currentEmotion.stableEmotion.confidence}% Confidence · {frameCount} Frames
+                          </div>
                         </div>
                       </div>
                     </>
@@ -419,9 +471,11 @@ export default function AnalyzePage() {
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-semibold">Face data captured</p>
+                    <p className="text-white text-sm font-semibold">Emotion detected</p>
                     <p className="text-gray-500 text-xs mt-0.5">
-                      {formatTime(faceTimer.seconds)} recorded · result will appear after analysis
+                      {capturedFaceResult && capturedFaceResult.emotion ? 
+                        `${capturedFaceResult.emotion} (${capturedFaceResult.confidence}%) · ${frameCount} frames analyzed` 
+                        : 'Ready for analysis'}
                     </p>
                   </div>
                 </div>
