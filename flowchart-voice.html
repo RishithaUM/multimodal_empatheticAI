@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Voice Emotion Detection – Workflow</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0f1117;
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px 60px;
+    min-height: 100vh;
+  }
+  .canvas {
+    width: 880px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .title { text-align: center; margin-bottom: 36px; }
+  .title h1 { font-size: 26px; font-weight: 700; color: #e2e8f0; letter-spacing: 0.5px; }
+  .title p  { font-size: 13px; color: #64748b; margin-top: 6px; }
+
+  .lane-row {
+    display: flex;
+    width: 100%;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .lane-header {
+    text-align: center;
+    padding: 10px 0;
+    border-radius: 8px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .lane-fe   { flex: 1.2; background: #1e293b; color: #60a5fa; border: 1px solid #2563eb44; }
+  .lane-api  { flex: 1.2; background: #1e293b; color: #a78bfa; border: 1px solid #7c3aed44; }
+  .lane-audio{ flex: 1;   background: #1e293b; color: #2dd4bf; border: 1px solid #0891b244; }
+  .lane-kv   { flex: 1;   background: #1e293b; color: #f472b6; border: 1px solid #db277744; }
+  .lane-sp   { flex: 1;   background: #1e293b; color: #fbbf24; border: 1px solid #d9770644; }
+
+  .step-row {
+    display: flex;
+    width: 100%;
+    gap: 10px;
+    position: relative;
+  }
+
+  .box {
+    border-radius: 10px;
+    padding: 11px 13px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    border: 1px solid transparent;
+  }
+  .box.fe   { flex:1.2; background:#1e3a5f; border-color:#2563eb66; color:#bfdbfe; }
+  .box.api  { flex:1.2; background:#2e1b4e; border-color:#7c3aed66; color:#ddd6fe; }
+  .box.audio{ flex:1;   background:#0c2a2a; border-color:#0891b299; color:#99f6e4; }
+  .box.kv   { flex:1;   background:#2d1420; border-color:#db277766; color:#fbcfe8; }
+  .box.sp   { flex:1;   background:#2a1f00; border-color:#d9770666; color:#fde68a; }
+  .box.empty{ background:transparent!important; border-color:transparent!important; opacity:0.08; }
+
+  .box .label { font-size: 9.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; opacity: 0.65; margin-bottom: 4px; }
+  .box .main  { font-size: 12.5px; font-weight: 600; }
+  .box .sub   { font-size: 11px; opacity: 0.75; margin-top: 3px; }
+
+  /* Full-width arrows between sections */
+  .arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 30px;
+    width: 100%;
+    position: relative;
+  }
+  .arrow::before {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    background: #334155;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+  }
+  .arrow span { background: #0f1117; padding: 0 4px; z-index:1; font-size:18px; color:#475569; }
+
+  /* Split arrow for parallel section */
+  .split-arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 36px;
+    width: 100%;
+    position: relative;
+  }
+  .split-arrow svg { z-index:1; }
+
+  /* Parallel section header */
+  .parallel-header {
+    width: 100%;
+    text-align: center;
+    padding: 8px;
+    background: #1c1917;
+    border: 1px dashed #44403c;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #78716c;
+    letter-spacing: 0.5px;
+    margin: 6px 0;
+  }
+
+  /* Fusion box — full width  */
+  .fusion-box {
+    width: 100%;
+    background: #1a0d30;
+    border: 1.5px solid #9333ea99;
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+  .fusion-box .label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #c084fc; opacity: 0.8; margin-bottom: 6px; }
+  .fusion-box .main  { font-size: 13px; font-weight: 600; color: #e9d5ff; }
+  .fusion-box .sub   { font-size: 11.5px; color: #a78bfa; margin-top: 4px; }
+
+  .weight-bar {
+    display: flex;
+    width: 100%;
+    height: 24px;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 10px;
+    gap: 2px;
+  }
+  .wbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .output-box {
+    width: 100%;
+    background: #0a1628;
+    border: 1.5px solid #3b82f6aa;
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+  .output-box .label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #60a5fa; opacity: 0.8; margin-bottom: 6px; }
+
+  .emotion-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .etag { font-size: 11px; padding: 2px 10px; border-radius: 4px; font-weight: 500; }
+
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 20px; margin-left: 5px; font-weight: 600; vertical-align: middle; }
+  .badge-pink   { background: #86198f44; color: #f0abfc; }
+  .badge-yellow { background: #78350f44; color: #fde68a; }
+
+  .json-box {
+    width: 100%;
+    background: #0c1221;
+    border: 1px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 11.5px;
+    color: #93c5fd;
+    line-height: 1.7;
+  }
+  .json-box .key { color: #c084fc; }
+  .json-box .val { color: #86efac; }
+  .json-box .num { color: #fde68a; }
+
+  .legend { display: flex; gap: 20px; margin-top: 40px; flex-wrap: wrap; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #94a3b8; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="title">
+    <h1>Voice Emotion Detection — Workflow</h1>
+    <p>EmpathAI · Kvilla wav2vec2 + SUPERB ER Fusion · 65% / 35% weight · 7 Emotions</p>
+  </div>
+
+  <!-- Lane headers -->
+  <div class="lane-row">
+    <div class="lane-header lane-fe">Frontend (React)</div>
+    <div class="lane-header lane-api">Flask API</div>
+    <div class="lane-header lane-audio">Audio Processor</div>
+    <div class="lane-header lane-kv">Kvilla wav2vec2</div>
+    <div class="lane-header lane-sp">SUPERB ER</div>
+  </div>
+
+  <!-- Step 1: Microphone -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">Input</div>
+      <div class="main">Microphone</div>
+      <div class="sub">getUserMedia() · MediaRecorder API</div>
+    </div>
+    <div class="box api empty"></div>
+    <div class="box audio empty"></div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 2: Record -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">Recording</div>
+      <div class="main">Web Audio API</div>
+      <div class="sub">Collect chunks → Blob → .wav file</div>
+    </div>
+    <div class="box api empty"></div>
+    <div class="box audio empty"></div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 3: POST -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">HTTP Request</div>
+      <div class="main">POST /api/emotion/voice/detect</div>
+      <div class="sub">multipart/form-data · audio file · Bearer JWT</div>
+    </div>
+    <div class="box api empty"></div>
+    <div class="box audio empty"></div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 4: Auth -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api">
+      <div class="label">Auth + File Save</div>
+      <div class="main">@token_required</div>
+      <div class="sub">JWT validate → save to temp file → pass path</div>
+    </div>
+    <div class="box audio empty"></div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 5: Model manager -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api">
+      <div class="label">Model Dispatch</div>
+      <div class="main">MLModelManager.detect_voice_emotion()</div>
+      <div class="sub">→ KvillaSuperBFusion.detect_emotion(audio_path)</div>
+    </div>
+    <div class="box audio empty"></div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 6: Audio load -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api empty"></div>
+    <div class="box audio">
+      <div class="label">Audio Load</div>
+      <div class="main">AudioProcessor.load_and_normalize()</div>
+      <div class="sub">librosa · 16kHz mono · normalize to [-1, 1]</div>
+    </div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 7: Chunk -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api empty"></div>
+    <div class="box audio">
+      <div class="label">Chunking</div>
+      <div class="main">chunk_audio()</div>
+      <div class="sub">2.5 s segments · skip chunks &gt;50% silence</div>
+    </div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <!-- Split into parallel -->
+  <div class="split-arrow">
+    <svg width="400" height="36" viewBox="0 0 400 36">
+      <line x1="200" y1="0" x2="200" y2="14" stroke="#334155" stroke-width="2"/>
+      <line x1="200" y1="14" x2="100" y2="14" stroke="#334155" stroke-width="2"/>
+      <line x1="200" y1="14" x2="300" y2="14" stroke="#334155" stroke-width="2"/>
+      <line x1="100" y1="14" x2="100" y2="36" stroke="#db2777" stroke-width="2"/>
+      <line x1="300" y1="14" x2="300" y2="36" stroke="#d97706" stroke-width="2"/>
+    </svg>
+  </div>
+
+  <div class="parallel-header">⬆ Parallel Inference — Each Chunk Processed Simultaneously ⬆</div>
+
+  <!-- Parallel step: Kvilla + SUPERB -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api empty"></div>
+    <div class="box audio empty"></div>
+    <div class="box kv">
+      <div class="label">Primary Model</div>
+      <div class="main">Kvilla <span class="badge badge-pink">wav2vec2</span></div>
+      <div class="sub">HuggingFace Wav2Vec2ForSequenceClassification · fine-tuned RAVDESS/CREMA-D/TESS</div>
+    </div>
+    <div class="box sp">
+      <div class="label">Backup Model</div>
+      <div class="main">SUPERB ER <span class="badge badge-yellow">wav2vec2</span></div>
+      <div class="sub">superb/wav2vec2-base-superb-er · pretrained emotion recognition</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Each model inference -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api empty"></div>
+    <div class="box audio empty"></div>
+    <div class="box kv">
+      <div class="label">Inference</div>
+      <div class="main">Wav2Vec2Processor → model()</div>
+      <div class="sub">Logits → Softmax → argmax → confidence + all_scores</div>
+    </div>
+    <div class="box sp">
+      <div class="label">Inference</div>
+      <div class="main">Wav2Vec2Processor → model()</div>
+      <div class="sub">Logits → Softmax → argmax → confidence + all_scores</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Aggregate chunks -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api empty"></div>
+    <div class="box audio">
+      <div class="label">Aggregate</div>
+      <div class="main">All chunks → average scores</div>
+      <div class="sub">Weighted mean across chunks per model</div>
+    </div>
+    <div class="box kv" style="opacity:0.4; font-size:11px; display:flex; align-items:center; justify-content:center;">
+      kvilla_results[]
+    </div>
+    <div class="box sp" style="opacity:0.4; font-size:11px; display:flex; align-items:center; justify-content:center;">
+      superb_results[]
+    </div>
+  </div>
+
+  <!-- Merge back -->
+  <div class="split-arrow" style="transform:scaleY(-1);">
+    <svg width="400" height="36" viewBox="0 0 400 36">
+      <line x1="200" y1="0" x2="200" y2="14" stroke="#334155" stroke-width="2"/>
+      <line x1="200" y1="14" x2="100" y2="14" stroke="#334155" stroke-width="2"/>
+      <line x1="200" y1="14" x2="300" y2="14" stroke="#334155" stroke-width="2"/>
+      <line x1="100" y1="14" x2="100" y2="36" stroke="#9333ea" stroke-width="2"/>
+      <line x1="300" y1="14" x2="300" y2="36" stroke="#9333ea" stroke-width="2"/>
+    </svg>
+  </div>
+
+  <!-- Fusion box -->
+  <div class="fusion-box">
+    <div class="label">Intelligent Fusion — KvillaSuperBFusion</div>
+    <div class="main">Weighted Score Combination + Agreement Boosting</div>
+    <div class="sub">If Kvilla & SUPERB agree on same emotion → confidence × 1.15 (agreement boost)</div>
+    <div class="weight-bar">
+      <div class="wbar" style="flex:0.65; background:#9333ea;">Kvilla 65%</div>
+      <div class="wbar" style="flex:0.35; background:#d97706;">SUPERB 35%</div>
+    </div>
+    <div style="font-size:11px; color:#7c3aed; margin-top:6px;">
+      final_score[e] = 0.65 × kvilla[e] + 0.35 × superb[e] &nbsp;·&nbsp; argmax → top emotion
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- 7 emotions result -->
+  <div style="width:100%; background:#0c2a1f; border:1px solid #059669aa; border-radius:10px; padding:12px 14px;">
+    <div style="font-size:9.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#34d399; opacity:0.8; margin-bottom:8px;">Classification — 7 Emotions</div>
+    <div class="emotion-grid">
+      <span class="etag" style="background:#7f1d1d44;color:#fca5a5;">😠 angry</span>
+      <span class="etag" style="background:#78350f44;color:#fcd34d;">🤢 disgusted</span>
+      <span class="etag" style="background:#1e3a5f44;color:#93c5fd;">😨 fearful</span>
+      <span class="etag" style="background:#14532d44;color:#86efac;">😊 happy</span>
+      <span class="etag" style="background:#37415144;color:#d1d5db;">😐 neutral</span>
+      <span class="etag" style="background:#1e3a5f44;color:#a5b4fc;">😢 sad</span>
+      <span class="etag" style="background:#36531444;color:#bef264;">😮 surprised</span>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- API response -->
+  <div class="step-row">
+    <div class="box fe empty"></div>
+    <div class="box api">
+      <div class="label">JSON Response · 200 OK</div>
+      <div class="main">Flask returns structured result</div>
+      <div class="sub">Cleanup temp audio file</div>
+    </div>
+    <div class="box audio empty"></div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <div class="arrow" style="height:10px;"></div>
+
+  <!-- JSON preview -->
+  <div class="json-box">
+    {<br>
+    &nbsp;&nbsp;<span class="key">"success"</span>: <span class="val">true</span>,<br>
+    &nbsp;&nbsp;<span class="key">"emotion"</span>: <span class="val">"happy"</span>,<br>
+    &nbsp;&nbsp;<span class="key">"confidence"</span>: <span class="num">0.87</span>,<br>
+    &nbsp;&nbsp;<span class="key">"all_scores"</span>: { <span class="key">"angry"</span>: <span class="num">0.03</span>, <span class="key">"happy"</span>: <span class="num">0.87</span>, ... },<br>
+    &nbsp;&nbsp;<span class="key">"model_type"</span>: <span class="val">"kvilla_superb_fusion"</span>,<br>
+    &nbsp;&nbsp;<span class="key">"audio_features"</span>: { <span class="key">"chunks_processed"</span>: <span class="num">4</span>, <span class="key">"agreement"</span>: <span class="val">true</span> }<br>
+    }
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Frontend display -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">UI Update</div>
+      <div class="main">Display emotion + confidence bar</div>
+      <div class="sub">setLastResult · Scores chart · Guardian alert check (3× same emotion → SendGrid email)</div>
+    </div>
+    <div class="box api empty"></div>
+    <div class="box audio empty"></div>
+    <div class="box kv empty"></div>
+    <div class="box sp empty"></div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:#2563eb;"></div>Frontend (React)</div>
+    <div class="legend-item"><div class="dot" style="background:#7c3aed;"></div>Flask API</div>
+    <div class="legend-item"><div class="dot" style="background:#0891b2;"></div>Audio Processor</div>
+    <div class="legend-item"><div class="dot" style="background:#db2777;"></div>Kvilla wav2vec2 (65%)</div>
+    <div class="legend-item"><div class="dot" style="background:#d97706;"></div>SUPERB ER (35%)</div>
+    <div class="legend-item"><div class="dot" style="background:#9333ea;"></div>Fusion Engine</div>
+  </div>
+
+</div>
+</body>
+</html>

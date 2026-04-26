@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Face Emotion Detection – Workflow</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0f1117;
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px 60px;
+    min-height: 100vh;
+  }
+  .canvas {
+    width: 780px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* Title */
+  .title {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  .title h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: #e2e8f0;
+    letter-spacing: 0.5px;
+  }
+  .title p { font-size: 13px; color: #64748b; margin-top: 6px; }
+
+  /* Lane headers */
+  .lane-row {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .lane-header {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .lane-fe  { background: #1e293b; color: #60a5fa; border: 1px solid #2563eb44; }
+  .lane-api { background: #1e293b; color: #a78bfa; border: 1px solid #7c3aed44; }
+  .lane-ml  { background: #1e293b; color: #34d399; border: 1px solid #06b6d444; }
+
+  /* Full-width step rows */
+  .step-row {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+    position: relative;
+  }
+
+  /* Boxes */
+  .box {
+    flex: 1;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    position: relative;
+    border: 1px solid transparent;
+  }
+  .box.fe  { background: #1e3a5f; border-color: #2563eb66; color: #bfdbfe; }
+  .box.api { background: #2e1b4e; border-color: #7c3aed66; color: #ddd6fe; }
+  .box.ml  { background: #0f3028; border-color: #059669aa; color: #a7f3d0; }
+  .box.fuse { background: #292524; border-color: #d97706aa; color: #fde68a; }
+  .box.out  { background: #1c1917; border-color: #f59e0b88; color: #fde68a; }
+  .box.decision {
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    padding: 22px 18px;
+    text-align: center;
+    font-size: 12px;
+    background: #27272a;
+    border-color: #71717a;
+    color: #e4e4e7;
+    border-radius: 4px;
+  }
+
+  .box .label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    opacity: 0.65;
+    margin-bottom: 5px;
+  }
+  .box .main {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .box .sub {
+    font-size: 11.5px;
+    opacity: 0.75;
+    margin-top: 4px;
+  }
+
+  /* Arrows */
+  .arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 32px;
+    width: 100%;
+    color: #475569;
+    font-size: 20px;
+    position: relative;
+  }
+  .arrow::before {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    background: #334155;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+  }
+  .arrow span {
+    background: #0f1117;
+    padding: 0 4px;
+    z-index: 1;
+    font-size: 18px;
+  }
+  /* Labeled arrow */
+  .arrow-label {
+    font-size: 11px;
+    color: #64748b;
+    font-style: italic;
+    background: #0f1117;
+    padding: 0 6px;
+    z-index: 1;
+  }
+
+  /* Wide single column box */
+  .wide { flex: 1; }
+
+  /* Grid row for ML pipeline sub-steps */
+  .ml-grid {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+  .ml-grid .box { font-size: 12px; }
+
+  /* Separator */
+  .sep {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #334155, transparent);
+    margin: 20px 0;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 24px;
+    margin-top: 40px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .dot {
+    width: 12px; height: 12px; border-radius: 3px;
+  }
+
+  /* badge */
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 20px;
+    margin-left: 6px;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .badge-blue  { background: #1d4ed866; color: #93c5fd; }
+  .badge-green { background: #065f4666; color: #6ee7b7; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- Title -->
+  <div class="title">
+    <h1>Face Emotion Detection — Workflow</h1>
+    <p>EmpathAI · CNN (ResNet50 + DeepFace) · 7 Emotions</p>
+  </div>
+
+  <!-- Lane headers -->
+  <div class="lane-row">
+    <div class="lane-header lane-fe">Frontend (React)</div>
+    <div class="lane-header lane-api">Flask API</div>
+    <div class="lane-header lane-ml">ML Pipeline</div>
+  </div>
+
+  <!-- Step 1: User -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">Input</div>
+      <div class="main">Webcam / Camera</div>
+      <div class="sub">MediaStream API — live video element</div>
+    </div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml"  style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 2: Frame capture -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">Frame Capture</div>
+      <div class="main">drawImage() → Canvas</div>
+      <div class="sub">640×480 px · JPEG quality 0.8 · toDataURL()</div>
+    </div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml"  style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 3: HTTP POST -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">HTTP Request</div>
+      <div class="main">POST /api/emotion/detect/face</div>
+      <div class="sub">Body: <code style="font-size:11px">{ image: "&lt;base64&gt;" }</code> · Bearer JWT</div>
+    </div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml"  style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 4: Auth + route -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api">
+      <div class="label">Auth Guard</div>
+      <div class="main">@token_required decorator</div>
+      <div class="sub">Validate JWT → extract user_id</div>
+    </div>
+    <div class="box ml"  style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 5: Decode image -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api">
+      <div class="label">Image Decode</div>
+      <div class="main">Base64 → NumPy array</div>
+      <div class="sub">cv2.imdecode · BGR format</div>
+    </div>
+    <div class="box ml"  style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 6: CNN entry -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api">
+      <div class="label">Model Manager</div>
+      <div class="main">MLModelManager.detect_face_emotion()</div>
+      <div class="sub">→ FaceEmotionCNN.detect_emotion()</div>
+    </div>
+    <div class="box ml" style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 7: Face detection (Haarcascade) -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml">
+      <div class="label">Face Detection</div>
+      <div class="main">OpenCV Haarcascade</div>
+      <div class="sub">haarcascade_frontalface_default.xml · BGR→Gray</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 8: ROI extraction -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml">
+      <div class="label">ROI Crop</div>
+      <div class="main">Extract face region</div>
+      <div class="sub">frame[y:y+h, x:x+w] · BGR→RGB · PIL Image</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 9: Preprocess -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml">
+      <div class="label">Preprocessing</div>
+      <div class="main">torchvision.transforms</div>
+      <div class="sub">Resize(224×224) · ToTensor() · Normalize(μ=0.485 σ=0.229)</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 10: ResNet50 inference -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml">
+      <div class="label">Inference</div>
+      <div class="main">ResNet50 CNN <span class="badge badge-blue">PyTorch</span></div>
+      <div class="sub">torch.no_grad() · Logits → Softmax probabilities</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 11: Classification -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml" style="background:#0c2a1f; border-color:#10b98166;">
+      <div class="label">Classification — 7 Emotions</div>
+      <div class="main" style="font-size:12px; display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">
+        <span style="background:#7f1d1d44;padding:2px 8px;border-radius:4px;color:#fca5a5;">😠 angry</span>
+        <span style="background:#78350f44;padding:2px 8px;border-radius:4px;color:#fcd34d;">🤢 disgusted</span>
+        <span style="background:#1e3a5f44;padding:2px 8px;border-radius:4px;color:#93c5fd;">😨 fearful</span>
+        <span style="background:#14532d44;padding:2px 8px;border-radius:4px;color:#86efac;">😊 happy</span>
+        <span style="background:#37415144;padding:2px 8px;border-radius:4px;color:#d1d5db;">😐 neutral</span>
+        <span style="background:#1e3a5f44;padding:2px 8px;border-radius:4px;color:#a5b4fc;">😢 sad</span>
+        <span style="background:#365314;padding:2px 8px;border-radius:4px;color:#bef264;">😮 surprised</span>
+      </div>
+      <div class="sub" style="margin-top:8px;">argmax(probabilities) → top emotion + confidence</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 12: Stability check -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api">
+      <div class="label">Stability Check</div>
+      <div class="main">EmotionStabilityDetector</div>
+      <div class="sub">10 consecutive frames → same emotion → locked result</div>
+    </div>
+    <div class="box ml" style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 13: API response -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.15;"></div>
+    <div class="box api">
+      <div class="label">JSON Response</div>
+      <div class="main">200 OK</div>
+      <div class="sub"><code style="font-size:11px">{ success, emotion, confidence, scores[] }</code></div>
+    </div>
+    <div class="box ml" style="opacity:0.15;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 14: Frontend display -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">UI Update</div>
+      <div class="main">Display emotion + confidence bar</div>
+      <div class="sub">Update state · Check guardian alert (3× same) · WebSocket emit</div>
+    </div>
+    <div class="box api" style="opacity:0.15;"></div>
+    <div class="box ml"  style="opacity:0.15;"></div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:#2563eb;"></div>Frontend (React)</div>
+    <div class="legend-item"><div class="dot" style="background:#7c3aed;"></div>Flask API</div>
+    <div class="legend-item"><div class="dot" style="background:#059669;"></div>ML Pipeline</div>
+    <div class="legend-item"><div class="dot" style="background:#d97706;"></div>Output / Result</div>
+  </div>
+
+</div>
+</body>
+</html>

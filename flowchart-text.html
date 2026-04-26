@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Text Emotion Detection – Workflow</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0f1117;
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px 60px;
+    min-height: 100vh;
+  }
+  .canvas {
+    width: 780px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .title {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  .title h1 { font-size: 26px; font-weight: 700; color: #e2e8f0; letter-spacing: 0.5px; }
+  .title p  { font-size: 13px; color: #64748b; margin-top: 6px; }
+
+  .lane-row {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .lane-header {
+    flex: 1;
+    text-align: center;
+    padding: 10px 0;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .lane-fe   { background: #1e293b; color: #60a5fa; border: 1px solid #2563eb44; }
+  .lane-api  { background: #1e293b; color: #a78bfa; border: 1px solid #7c3aed44; }
+  .lane-llm  { background: #1e293b; color: #fb923c; border: 1px solid #ea580c44; }
+
+  .step-row {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+    position: relative;
+  }
+
+  .box {
+    flex: 1;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    border: 1px solid transparent;
+  }
+  .box.fe   { background: #1e3a5f; border-color: #2563eb66; color: #bfdbfe; }
+  .box.api  { background: #2e1b4e; border-color: #7c3aed66; color: #ddd6fe; }
+  .box.llm  { background: #431407; border-color: #ea580c99; color: #fed7aa; }
+  .box.out  { background: #172554; border-color: #3b82f6aa; color: #bfdbfe; }
+
+  .box .label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; opacity: 0.65; margin-bottom: 5px; }
+  .box .main  { font-size: 13px; font-weight: 600; }
+  .box .sub   { font-size: 11.5px; opacity: 0.75; margin-top: 4px; }
+
+  .arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 32px;
+    width: 100%;
+    color: #475569;
+    font-size: 20px;
+    position: relative;
+  }
+  .arrow::before {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 100%;
+    background: #334155;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+  }
+  .arrow span { background: #0f1117; padding: 0 4px; z-index: 1; font-size: 18px; }
+
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 20px; margin-left: 6px; font-weight: 600; vertical-align: middle; }
+  .badge-orange { background: #7c2d1266; color: #fb923c; }
+
+  .prompt-box {
+    width: 100%;
+    background: #1c1917;
+    border: 1px solid #44403c;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 0;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 11.5px;
+    color: #d6d3d1;
+    line-height: 1.7;
+  }
+  .prompt-box .kw { color: #fb923c; }
+  .prompt-box .str { color: #86efac; }
+  .prompt-box .comment { color: #57534e; }
+
+  .json-box {
+    width: 100%;
+    background: #0c1221;
+    border: 1px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 11.5px;
+    color: #93c5fd;
+    line-height: 1.7;
+  }
+  .json-box .key   { color: #c084fc; }
+  .json-box .val   { color: #86efac; }
+  .json-box .num   { color: #fde68a; }
+
+  .legend {
+    display: flex;
+    gap: 24px;
+    margin-top: 40px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; }
+
+  .emotion-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .etag {
+    font-size: 11px;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="title">
+    <h1>Text Emotion Detection — Workflow</h1>
+    <p>EmpathAI · Ollama llama3.1:8b · NLP-based · 7 Emotions</p>
+  </div>
+
+  <!-- Lane headers -->
+  <div class="lane-row">
+    <div class="lane-header lane-fe">Frontend (React)</div>
+    <div class="lane-header lane-api">Flask API</div>
+    <div class="lane-header lane-llm">Ollama LLM</div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">User Input</div>
+      <div class="main">Text input field</div>
+      <div class="sub">useTextAnalysis hook · charCount / wordCount tracking</div>
+    </div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm" style="opacity:0.12;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 2 -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">Trigger Analysis</div>
+      <div class="main">analyzeText() → detectTextEmotion(text)</div>
+      <div class="sub">Validates non-empty · trim whitespace</div>
+    </div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm" style="opacity:0.12;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 3 -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">HTTP Request</div>
+      <div class="main">POST /api/emotion/detect/text</div>
+      <div class="sub">Body: <code style="font-size:11px">{ text: "..." }</code> · Bearer JWT header</div>
+    </div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm" style="opacity:0.12;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 4 -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api">
+      <div class="label">Auth + Validation</div>
+      <div class="main">@token_required · Input check</div>
+      <div class="sub">Validate JWT · require non-empty string · max 1000 chars</div>
+    </div>
+    <div class="box llm" style="opacity:0.12;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 5 -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api">
+      <div class="label">Model Dispatch</div>
+      <div class="main">MLModelManager.detect_text_emotion()</div>
+      <div class="sub">→ TextEmotionTransformer.detect_emotion_with_scores()</div>
+    </div>
+    <div class="box llm" style="opacity:0.12;"></div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 6: Prompt construction -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm">
+      <div class="label">Prompt Engineering</div>
+      <div class="main">Structured classification prompt</div>
+      <div class="sub">System role + emotion definitions + examples</div>
+    </div>
+  </div>
+
+  <div class="arrow" style="height:10px;"></div>
+
+  <!-- Prompt preview box -->
+  <div class="prompt-box">
+    <span class="comment">// System prompt sent to Ollama</span><br>
+    <span class="kw">classify</span> text into <span class="str">ONE</span> of 7 emotions:<br>
+    &nbsp;&nbsp;<span class="kw">angry</span>     — hostility, frustration, rage<br>
+    &nbsp;&nbsp;<span class="kw">disgusted</span> — revulsion, contempt, distaste<br>
+    &nbsp;&nbsp;<span class="kw">fearful</span>   — anxiety, worry, nervousness, stress<br>
+    &nbsp;&nbsp;<span class="kw">happy</span>     — happiness, excitement, gratitude<br>
+    &nbsp;&nbsp;<span class="kw">neutral</span>   — factual, no strong emotion<br>
+    &nbsp;&nbsp;<span class="kw">sad</span>       — grief, depression, loneliness<br>
+    &nbsp;&nbsp;<span class="kw">surprised</span> — shock, astonishment, amazement<br>
+    <br>
+    <span class="comment">// Return strict JSON only:</span><br>
+    { <span class="str">"emotion"</span>: &lt;label&gt;, <span class="str">"confidence"</span>: 0.0–1.0, <span class="str">"scores"</span>: { all 7 } }
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 7: Ollama API call -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm">
+      <div class="label">LLM Inference</div>
+      <div class="main">Ollama API <span class="badge badge-orange">llama3.1:8b</span></div>
+      <div class="sub">POST http://localhost:11434/api/generate · format: json · stream: false</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 8: Parse JSON response -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm">
+      <div class="label">Response Parse</div>
+      <div class="main">json.loads(raw_response)</div>
+      <div class="sub">Extract emotion string + confidence float + all 7 scores dict</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 9: Normalize -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm">
+      <div class="label">Normalization</div>
+      <div class="main">_normalize_emotion()</div>
+      <div class="sub">Alias map: anger→angry · joy→happy · fear→fearful · sadness→sad</div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 10: 7-emotion result -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm" style="background:#1c0a00; border-color:#c2410c;">
+      <div class="label">Classification — 7 Emotions</div>
+      <div class="emotion-grid" style="margin-top:8px;">
+        <span class="etag" style="background:#7f1d1d44;color:#fca5a5;">😠 angry</span>
+        <span class="etag" style="background:#78350f44;color:#fcd34d;">🤢 disgusted</span>
+        <span class="etag" style="background:#1e3a5f44;color:#93c5fd;">😨 fearful</span>
+        <span class="etag" style="background:#14532d44;color:#86efac;">😊 happy</span>
+        <span class="etag" style="background:#37415144;color:#d1d5db;">😐 neutral</span>
+        <span class="etag" style="background:#1e3a5f44;color:#a5b4fc;">😢 sad</span>
+        <span class="etag" style="background:#36531444;color:#bef264;">😮 surprised</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 11: API sends back -->
+  <div class="step-row">
+    <div class="box fe" style="opacity:0.12;"></div>
+    <div class="box api">
+      <div class="label">JSON Response · 200 OK</div>
+      <div class="main" style="margin-bottom:8px;">Flask returns structured result</div>
+    </div>
+    <div class="box llm" style="opacity:0.12;"></div>
+  </div>
+
+  <div class="arrow" style="height:10px;"></div>
+
+  <!-- JSON preview -->
+  <div class="json-box">
+    {<br>
+    &nbsp;&nbsp;<span class="key">"success"</span>: <span class="val">true</span>,<br>
+    &nbsp;&nbsp;<span class="key">"emotion"</span>: <span class="val">"happy"</span>,<br>
+    &nbsp;&nbsp;<span class="key">"confidence"</span>: <span class="num">0.92</span>,<br>
+    &nbsp;&nbsp;<span class="key">"scores"</span>: {<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"angry"</span>: <span class="num">0.01</span>, <span class="key">"disgusted"</span>: <span class="num">0.01</span>,<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"fearful"</span>: <span class="num">0.01</span>, <span class="key">"happy"</span>: <span class="num">0.92</span>,<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"neutral"</span>: <span class="num">0.03</span>, <span class="key">"sad"</span>: <span class="num">0.01</span>, <span class="key">"surprised"</span>: <span class="num">0.01</span><br>
+    &nbsp;&nbsp;},<br>
+    &nbsp;&nbsp;<span class="key">"metadata"</span>: { <span class="key">"text_length"</span>: <span class="num">6</span> }<br>
+    }
+  </div>
+
+  <div class="arrow"><span>↓</span></div>
+
+  <!-- Step 12: Frontend display -->
+  <div class="step-row">
+    <div class="box fe">
+      <div class="label">UI Update</div>
+      <div class="main">Display emotion + confidence bar</div>
+      <div class="sub">setLastResult · Scores chart · Guardian alert check (3× same emotion)</div>
+    </div>
+    <div class="box api" style="opacity:0.12;"></div>
+    <div class="box llm" style="opacity:0.12;"></div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:#2563eb;"></div>Frontend (React)</div>
+    <div class="legend-item"><div class="dot" style="background:#7c3aed;"></div>Flask API</div>
+    <div class="legend-item"><div class="dot" style="background:#ea580c;"></div>Ollama LLM</div>
+  </div>
+
+</div>
+</body>
+</html>
