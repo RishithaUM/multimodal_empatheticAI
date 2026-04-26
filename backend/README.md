@@ -33,7 +33,9 @@ backend/
 │   ├── face/
 │   │   └── face_emotion_cnn.py  # CNN face emotion detection
 │   ├── voice/
-│   │   └── voice_emotion_bilstm.py  # BiLSTM voice analysis
+│   │   ├── voice_emotion_kvilla_superb.py  # Primary: Kvilla + SUPERB fusion
+│   │   ├── voice_emotion_enhanced.py       # Enhanced feature extractor
+│   │   └── voice_emotion_simple.py         # Librosa-based fallback
 │   ├── text/
 │   │   └── text_emotion_transformer.py  # Transformer text emotion
 │   └── __init__.py
@@ -48,7 +50,7 @@ backend/
 
 ### 1. **Multimodal Emotion Detection**
 - **Face Recognition**: CNN-based facial emotion detection
-- **Voice Analysis**: BiLSTM temporal emotion analysis
+- **Voice Analysis**: Kvilla + SUPERB ER fusion voice emotion detection
 - **Text Analysis**: Transformer-based NLP emotion detection
 - **Multimodal Fusion**: Weighted combination with cross-modal attention
 
@@ -202,10 +204,10 @@ result = manager.detect_face_emotion('image.jpg')
 # Returns: {'emotion': 'happy', 'confidence': 0.95, ...}
 ```
 
-### Voice Emotion BiLSTM
+### Voice Emotion Detection (Dual-Model)
 ```python
 result = manager.detect_voice_emotion('audio.wav')
-# Returns: {'emotion': 'sad', 'confidence': 0.87, ...}
+# Returns: {'emotion': 'sad', 'confidence': 0.87, ...}  (Kvilla+SUPERB fusion)
 ```
 
 ### Text Emotion Transformer

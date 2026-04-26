@@ -75,3 +75,63 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# ML Model weights (large binary files — download separately)
+*.safetensors
+*.pth
+*.bin
+*.onnx
+*.pt
+
+# Audio files
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.m4a
+audio_uploads/
+
+# Temporary / test files at root
+test_*.py
+verify_*.py
+final_test.py
+download_models.py
+FINAL_VERIFICATION.py
+KVILLA_QUICKSTART.py
+TEST_VOICE_INTEGRATION.py
+
+# Frontend misc
+frontend/auto-imports.d.ts
+frontend/verify-*.js
+frontend/download-*.py
+frontend/download-*.js
+frontend/download-*.bat
+frontend/download-*.ps1
+frontend/get-models.py
+frontend/create-model-placeholders.py
+frontend/project_plan.md
+
+# Vite cache
+frontend/.vite/
+frontend/node_modules/
+
+# Backend test scripts
+backend/test_imports.py
+backend/ml_models/voice/test_voice_emotion.py
+
+# Flowcharts / project docs (binary)
+*.pdf
+*.pptx
+*.docx
+"project requirements/"
+
+# HTML prototype files
+face-cnn-model-training.html
+face-emotion-detection-flow.html
+text-emotion-detection-flow.html
+voice-emission-detection-flow.html
+voice-emotion-detection-flow.html
+what-data-sent-to-models.html
+VOICE_TEST.html
+START_SERVERS.bat
+START_SERVERS.ps1

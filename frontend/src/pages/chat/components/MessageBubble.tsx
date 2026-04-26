@@ -1,4 +1,8 @@
-import { emotionColors } from '@/mocks/emotions';
+const emotionColors: Record<string, string> = {
+  Happy: '#00D4AA', Sad: '#6C63FF', Anxious: '#F59E0B', Angry: '#EF4444',
+  Neutral: '#94A3B8', Excited: '#EC4899', Calm: '#3B82F6', Fearful: '#8B5CF6',
+  Disgusted: '#10B981', Surprised: '#F97316',
+};
 
 export interface ChatMessage {
   id: string;

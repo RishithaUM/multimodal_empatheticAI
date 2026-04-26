@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ username: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -15,7 +15,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.username.trim() || !form.password.trim()) {
+    if (!form.email.trim() || !form.password.trim()) {
       setError('Please fill in all fields.');
       return;
     }
@@ -24,7 +24,7 @@ export default function LoginPage() {
       const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ email: form.email.toLowerCase(), password: form.password }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -34,7 +34,7 @@ export default function LoginPage() {
       }
       localStorage.setItem('token', data.token);
       setLoading(false);
-      navigate('/dashboard');
+      navigate('/analyze');
     } catch (error) {
       setError('Connection error. Is the backend running?');
       setLoading(false);
@@ -74,17 +74,17 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Username */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
               <div className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center">
-                  <i className="ri-user-line text-gray-500 text-sm"></i>
+                  <i className="ri-mail-line text-gray-500 text-sm"></i>
                 </div>
                 <input
-                  type="text"
-                  name="username"
-                  value={form.username}
+                  type="email"
+                  name="email"
+                  value={form.email}
                   onChange={handleChange}
-                  placeholder="Enter your username"
+                  placeholder="Enter your email"  
                   className="w-full pl-10 pr-4 py-3 rounded-xl text-sm text-white placeholder-gray-600 outline-none transition-all focus:ring-1"
                   style={{
                     background: '#1C1C28',

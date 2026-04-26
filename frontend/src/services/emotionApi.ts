@@ -202,113 +202,74 @@ export function mapVoiceToEmotion(analysis: VoiceAnalysisResult): ModalityResult
   };
 }
 
-// ─── Text Sentiment Analysis ──────────────────────────────────────────────────
+// ─── Text Emotion Detection (Ollama via Backend) ─────────────────────────────
 
-interface SentimentResult {
-  score: number;       // -5 to +5
-  comparative: number; // per-word score
-  positive: string[];
-  negative: string[];
-}
+export async function detectTextEmotion(text: string): Promise<ModalityResult | null> {
+  try {
+    if (!text.trim()) return null;
 
-// Lightweight AFINN-based sentiment (no external lib needed)
-const AFINN: Record<string, number> = {
-  happy: 3, joy: 3, love: 3, great: 3, wonderful: 3, amazing: 3, fantastic: 3, excellent: 3,
-  good: 2, nice: 2, glad: 2, pleased: 2, enjoy: 2, like: 2, fun: 2, smile: 2, laugh: 2,
-  okay: 1, fine: 1, alright: 1, ok: 1,
-  sad: -2, unhappy: -2, bad: -2, terrible: -3, awful: -3, horrible: -3, hate: -3,
-  angry: -3, furious: -3, rage: -3, mad: -2, upset: -2, frustrated: -2,
-  anxious: -2, worried: -2, nervous: -2, scared: -2, afraid: -2, fear: -2,
-  depressed: -3, hopeless: -3, worthless: -3, lonely: -2, alone: -1,
-  excited: 3, thrilled: 3, enthusiastic: 3, energetic: 2, motivated: 2,
-  calm: 2, peaceful: 2, relaxed: 2, serene: 2, content: 2,
-  tired: -1, exhausted: -2, bored: -1, dull: -1,
-  overwhelmed: -2, stressed: -2, pressure: -1, difficult: -1, hard: -1,
-  adore: 3, cherish: 3, miss: -1, lost: -1,
-};
+    const token = localStorage.getItem('token');
+    const endpoint = token ? '/api/emotion/detect/text' : '/api/emotion/detect/text/test';
+    const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
+    const localDevBase = window.location.hostname === 'localhost' && window.location.port === '3000'
+      ? 'http://localhost:5000'
+      : '';
+    const apiBase = (configuredBase || localDevBase).replace(/\/$/, '');
+    const url = `${apiBase}${endpoint}`;
 
-export function analyzeTextSentiment(text: string): SentimentResult {
-  const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(Boolean);
-  let score = 0;
-  const positive: string[] = [];
-  const negative: string[] = [];
+    console.log(`[Text Emotion] Sending to Ollama via backend: "${text}"`);
+    console.log(`[Text Emotion] Endpoint: ${url}`);
 
-  for (const word of words) {
-    const val = AFINN[word];
-    if (val !== undefined) {
-      score += val;
-      if (val > 0) positive.push(word);
-      else negative.push(word);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    console.log('[Text Emotion] Raw backend response:', result);
+    if (!result.success) return null;
+
+    const rawScores = result.scores ?? {};
+    let scores: EmotionScore[] = Object.entries(rawScores)
+      .map(([emotion, confidence]) => ({
+        emotion: EMOTION_LABEL_MAP[emotion.toLowerCase()] || emotion,
+        confidence: Math.round(Math.max(0, Math.min(1, Number(confidence))) * 100),
+      }))
+      .sort((a, b) => b.confidence - a.confidence);
+
+    const topEmotion = EMOTION_LABEL_MAP[(result.emotion || 'neutral').toLowerCase()] || result.emotion || 'Neutral';
+    const topConfidence = Math.round(Math.max(0, Math.min(1, Number(result.confidence || 0))) * 100);
+
+    // Ollama basic endpoint returns no per-label scores — synthesize one entry so fusion never sees empty scores
+    if (scores.length === 0) {
+      scores = [{ emotion: topEmotion, confidence: topConfidence }];
     }
+
+    const modalityResult: ModalityResult = {
+      modality: 'text',
+      emotion: topEmotion,
+      confidence: topConfidence,
+      scores,
+      raw: {
+        textLength: result.metadata?.text_length ?? text.trim().split(/\s+/).length,
+      },
+    };
+
+    console.log('[Text Emotion] Detected emotion:', topEmotion, `(${topConfidence}% confidence)`);
+    console.log('[Text Emotion] Scores:', scores);
+    console.log('[Text Emotion] Final ModalityResult:', modalityResult);
+
+    return modalityResult;
+  } catch (err) {
+    console.warn('Text emotion detection error:', err);
+    return null;
   }
-
-  return {
-    score,
-    comparative: words.length > 0 ? score / words.length : 0,
-    positive,
-    negative,
-  };
-}
-
-export function mapTextToEmotion(text: string): ModalityResult {
-  const sentiment = analyzeTextSentiment(text);
-  const { score, comparative, positive, negative } = sentiment;
-
-  let scores: EmotionScore[] = [];
-
-  // Map sentiment score to emotions
-  if (score >= 4) {
-    scores = [
-      { emotion: 'Excited', confidence: 80 + Math.round(Math.random() * 15) },
-      { emotion: 'Happy', confidence: 70 + Math.round(Math.random() * 20) },
-      { emotion: 'Neutral', confidence: 10 },
-    ];
-  } else if (score >= 2) {
-    scores = [
-      { emotion: 'Happy', confidence: 65 + Math.round(Math.random() * 20) },
-      { emotion: 'Calm', confidence: 40 + Math.round(Math.random() * 15) },
-      { emotion: 'Neutral', confidence: 25 },
-    ];
-  } else if (score >= 0) {
-    scores = [
-      { emotion: 'Neutral', confidence: 60 + Math.round(Math.random() * 20) },
-      { emotion: 'Calm', confidence: 35 + Math.round(Math.random() * 15) },
-      { emotion: 'Happy', confidence: 20 },
-    ];
-  } else if (score >= -2) {
-    scores = [
-      { emotion: 'Sad', confidence: 55 + Math.round(Math.random() * 20) },
-      { emotion: 'Anxious', confidence: 40 + Math.round(Math.random() * 15) },
-      { emotion: 'Neutral', confidence: 20 },
-    ];
-  } else {
-    scores = [
-      { emotion: 'Sad', confidence: 70 + Math.round(Math.random() * 20) },
-      { emotion: 'Angry', confidence: 50 + Math.round(Math.random() * 20) },
-      { emotion: 'Fearful', confidence: 35 + Math.round(Math.random() * 15) },
-      { emotion: 'Neutral', confidence: 10 },
-    ];
-  }
-
-  // Boost anxious if negative words include anxiety-related terms
-  const anxietyWords = ['anxious', 'worried', 'nervous', 'stressed', 'overwhelmed', 'pressure'];
-  if (negative.some((w) => anxietyWords.includes(w))) {
-    scores = [
-      { emotion: 'Anxious', confidence: 70 + Math.round(Math.random() * 20) },
-      ...scores.filter((s) => s.emotion !== 'Anxious'),
-    ];
-  }
-
-  scores.sort((a, b) => b.confidence - a.confidence);
-  const top = scores[0];
-
-  return {
-    modality: 'text',
-    emotion: top.emotion,
-    confidence: top.confidence,
-    scores,
-    raw: { score, comparative, positiveCount: positive.length, negativeCount: negative.length },
-  };
 }
 
 // ─── Fusion Engine ────────────────────────────────────────────────────────────
@@ -347,8 +308,22 @@ export function fuseEmotions(results: ModalityResult[]): FusedResult {
     }
   }
 
-  // Find winner
+  // Find winner — fall back to the single-modal top result if emotionVotes is empty
   const sorted = Object.entries(emotionVotes).sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) {
+    const fallback = results[0];
+    const avgConf = Math.round(results.reduce((s, r) => s + r.confidence, 0) / results.length);
+    const intensityFb: 'Low' | 'Medium' | 'High' = avgConf > 70 ? 'High' : avgConf > 45 ? 'Medium' : 'Low';
+    return {
+      emotion: fallback.emotion,
+      confidence: fallback.confidence,
+      intensity: avgConf,
+      intensityLabel: intensityFb,
+      modalities: results,
+      fusionWeights: {},
+      timestamp: Date.now(),
+    };
+  }
   let topEmotion = sorted[0][0];
   let topScore = Math.min(99, Math.round(sorted[0][1]));
 

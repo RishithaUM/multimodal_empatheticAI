@@ -1,16 +1,12 @@
 import { useState, useCallback } from 'react';
-import { mapTextToEmotion, analyzeTextSentiment } from '@/services/emotionApi';
-import type { ModalityResult, SentimentResult } from '@/services/emotionApi';
-
-// Re-export SentimentResult type for consumers
-export type { SentimentResult };
+import { detectTextEmotion } from '@/services/emotionApi';
+import type { ModalityResult } from '@/services/emotionApi';
 
 export interface UseTextAnalysisReturn {
   text: string;
   setText: (t: string) => void;
-  sentiment: ReturnType<typeof analyzeTextSentiment> | null;
   lastResult: ModalityResult | null;
-  analyzeText: () => ModalityResult | null;
+  analyzeText: () => Promise<ModalityResult | null>;
   resetText: () => void;
   charCount: number;
   wordCount: number;
@@ -18,21 +14,17 @@ export interface UseTextAnalysisReturn {
 
 export function useTextAnalysis(): UseTextAnalysisReturn {
   const [text, setText] = useState('');
-  const [sentiment, setSentiment] = useState<ReturnType<typeof analyzeTextSentiment> | null>(null);
   const [lastResult, setLastResult] = useState<ModalityResult | null>(null);
 
-  const analyzeText = useCallback((): ModalityResult | null => {
+  const analyzeText = useCallback(async (): Promise<ModalityResult | null> => {
     if (!text.trim()) return null;
-    const s = analyzeTextSentiment(text);
-    setSentiment(s);
-    const result = mapTextToEmotion(text);
+    const result = await detectTextEmotion(text);
     setLastResult(result);
     return result;
   }, [text]);
 
   const resetText = useCallback(() => {
     setText('');
-    setSentiment(null);
     setLastResult(null);
   }, []);
 
@@ -41,7 +33,6 @@ export function useTextAnalysis(): UseTextAnalysisReturn {
   return {
     text,
     setText,
-    sentiment,
     lastResult,
     analyzeText,
     resetText,

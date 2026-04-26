@@ -1,13 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const navItems = [
-  { label: 'Dashboard', icon: 'ri-dashboard-3-line', path: '/dashboard' },
   { label: 'Analyze', icon: 'ri-scan-line', path: '/analyze' },
-  { label: 'Results', icon: 'ri-bar-chart-grouped-line', path: '/results' },
   { label: 'History', icon: 'ri-history-line', path: '/history' },
   { label: 'Chat', icon: 'ri-chat-ai-line', path: '/chat' },
-  { label: 'Analytics', icon: 'ri-line-chart-line', path: '/analytics' },
   { label: 'Alerts', icon: 'ri-alarm-warning-line', path: '/alerts' },
   { label: 'Settings', icon: 'ri-settings-3-line', path: '/settings' },
 ];
@@ -20,6 +17,25 @@ interface SidebarProps {
 export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+
+  useEffect(() => {
+    // Load real user info from backend using stored token
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    fetch('http://localhost:5000/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setUserName(data.user.username || data.user.email);
+          setUserEmail(data.user.email);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <aside
@@ -85,12 +101,12 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
       >
         <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
           style={{ background: 'linear-gradient(135deg, #6C63FF, #00D4AA)' }}>
-          A
+          {userName ? userName[0].toUpperCase() : <i className="ri-user-line text-xs"></i>}
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">Alex Morgan</p>
-            <p className="text-gray-500 text-xs truncate">alex@empathai.app</p>
+            <p className="text-white text-sm font-medium truncate">{userName || 'Not logged in'}</p>
+            <p className="text-gray-500 text-xs truncate">{userEmail || 'Sign in to sync data'}</p>
           </div>
         )}
         {!collapsed && (

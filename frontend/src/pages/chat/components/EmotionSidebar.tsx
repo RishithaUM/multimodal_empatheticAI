@@ -1,6 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import type { FusedResult } from '@/services/emotionApi';
-import { emotionColors } from '@/mocks/emotions';
+
+const emotionColors: Record<string, string> = {
+  Happy: '#00D4AA', Sad: '#6C63FF', Anxious: '#F59E0B', Angry: '#EF4444',
+  Neutral: '#94A3B8', Excited: '#EC4899', Calm: '#3B82F6', Fearful: '#8B5CF6',
+  Disgusted: '#10B981', Surprised: '#F97316',
+};
 
 interface EmotionSidebarProps {
   currentEmotion: FusedResult | null;
@@ -180,7 +185,7 @@ export default function EmotionSidebar({ currentEmotion, messageCount, sessionSt
         <div className="grid grid-cols-2 gap-2">
           {[
             { label: 'History', icon: 'ri-history-line', path: '/history' },
-            { label: 'Analytics', icon: 'ri-bar-chart-2-line', path: '/analytics' },
+            { label: 'Alerts', icon: 'ri-alarm-warning-line', path: '/alerts' },
             { label: 'Results', icon: 'ri-file-chart-line', path: '/results' },
             { label: 'Analyze', icon: 'ri-scan-line', path: '/analyze' },
           ].map((action) => (

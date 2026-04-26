@@ -4,15 +4,12 @@ import Home from "../pages/home/page";
 import LoginPage from "../pages/auth/LoginPage";
 import RegisterPage from "../pages/auth/RegisterPage";
 import AppLayout from "../components/feature/AppLayout";
-import DashboardPage from "../pages/dashboard/page";
 import AnalyzePage from "../pages/analyze/page";
 import ResultsPage from "../pages/results/page";
 import HistoryPage from "../pages/history/page";
 import ChatPage from "../pages/chat/page";
-import AnalyticsPage from "../pages/analytics/page";
 import AlertsPage from "../pages/alerts/page";
 import SettingsPage from "../pages/settings/page";
-import BackendSetupPage from "../pages/backend/page";
 
 const routes: RouteObject[] = [
   {
@@ -31,15 +28,12 @@ const routes: RouteObject[] = [
     path: "/",
     element: <AppLayout />,
     children: [
-      { path: "dashboard", element: <DashboardPage /> },
       { path: "analyze", element: <AnalyzePage /> },
       { path: "results", element: <ResultsPage /> },
       { path: "history", element: <HistoryPage /> },
       { path: "chat", element: <ChatPage /> },
-      { path: "analytics", element: <AnalyticsPage /> },
       { path: "alerts", element: <AlertsPage /> },
       { path: "settings", element: <SettingsPage /> },
-      { path: "backend-setup", element: <BackendSetupPage /> },
     ],
   },
   {

@@ -23,7 +23,14 @@ export interface PersistedEmotionEntry extends FusedResult {
 }
 
 const STORAGE_KEY = 'empathai_emotion_history';
+const MIGRATION_KEY = 'empathai_history_v2';
 const MAX_PERSISTED = 200;
+
+// One-time migration: clear old simulated history data
+if (!localStorage.getItem(MIGRATION_KEY)) {
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.setItem(MIGRATION_KEY, '1');
+}
 
 type EmotionListener = (result: FusedResult) => void;
 type StatusListener = (status: WSStatus) => void;
@@ -67,7 +74,7 @@ class EmotionWebSocketService {
     if (serverUrl) {
       this.tryWebSocket(serverUrl);
     } else {
-      this.startSimulation();
+      this.setStatus('disconnected');
     }
   }
 
@@ -181,15 +188,15 @@ class EmotionWebSocketService {
   }
 
   private handleConnectionFailure(): void {
-    console.info('[EmpathAI WS] Server unavailable — switching to simulated stream');
+    console.info('[EmpathAI WS] Server unavailable — showing disconnected state');
     this.stopPing();
-    this.startSimulation();
+    this.setStatus('error');
   }
 
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.info('[EmpathAI WS] Max reconnect attempts reached — switching to simulated stream');
-      this.startSimulation();
+      console.info('[EmpathAI WS] Max reconnect attempts reached');
+      this.setStatus('error');
       return;
     }
     this.reconnectAttempts++;

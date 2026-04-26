@@ -140,7 +140,7 @@ backend/
 │   ├── models/        ← Database schemas
 │   ├── services/      ← Business logic
 │   └── __init__.py    ← Flask app factory
-├── ml_models/         ← ML models (CNN, BiLSTM, Transformer)
+├── ml_models/         ← ML models (CNN, Dual-Model Voice, Transformer)
 ├── run.py             ← Entry point
 ├── requirements.txt   ← Dependencies
 └── .env              ← Configuration (create from .env.example)

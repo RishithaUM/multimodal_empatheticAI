@@ -1,8 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGuardianAlert } from '@/hooks/useGuardianAlert';
 import type { GuardianAlert, AlertTrigger, AlertSeverity } from '@/services/guardianAlertService';
-import { NEGATIVE_EMOTIONS } from '@/services/guardianAlertService';
 import { emailNotificationService } from '@/services/emailNotificationService';
 
 // ─── Config maps ─────────────────────────────────────────────────────────────
@@ -31,27 +30,6 @@ const statusConfig: Record<string, { color: string; bg: string; icon: string; la
   dismissed: { color: '#6B7280', bg: 'rgba(107,114,128,0.1)', icon: 'ri-eye-off-line', label: 'Dismissed' },
 };
 
-const triggerConditions = [
-  {
-    icon: 'ri-repeat-line',
-    color: '#6C63FF',
-    title: 'Repeated Negative Emotions',
-    description: `3 or more consecutive detections of negative emotions (${[...NEGATIVE_EMOTIONS].join(', ')}) trigger a warning alert.`,
-  },
-  {
-    icon: 'ri-bar-chart-fill',
-    color: '#EF4444',
-    title: 'High Intensity Distress',
-    description: 'Any single detection where a negative emotion exceeds 80% intensity triggers an immediate critical alert.',
-  },
-  {
-    icon: 'ri-timer-flash-line',
-    color: '#F59E0B',
-    title: 'Prolonged Distress',
-    description: '5 or more negative emotion detections within a 30-minute window trigger a critical prolonged distress alert.',
-  },
-];
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function EmailStatusBadge({ alert, onResend, resending }: {
@@ -72,9 +50,6 @@ function EmailStatusBadge({ alert, onResend, resending }: {
           <i className={`${sc.icon} text-xs ${alert.status === 'pending' ? 'animate-pulse' : ''}`}></i>
         </div>
         {sc.label}
-        {isSimulated && alert.status === 'sent' && (
-          <span className="opacity-60">(simulated)</span>
-        )}
       </span>
 
       {/* Resend button for failed */}
@@ -156,7 +131,7 @@ function AlertBanner({ alert, onDismiss }: { alert: GuardianAlert; onDismiss: ()
             >
               <i className={`${statusConfig[alert.status]?.icon || 'ri-time-line'} text-xs`}></i>
               {statusConfig[alert.status]?.label || 'Unknown'}
-              {alert.simulated && alert.status === 'sent' && ' (simulated)'}
+
             </span>
           </div>
         </div>
@@ -276,16 +251,25 @@ function AlertRow({ alert, onDismiss, onDelete, onResend, resendingId }: {
 
 export default function AlertsPage() {
   const navigate = useNavigate();
-  const { alerts, activeAlert, dismissActive, dismissAlert, deleteAlert, unreadCount, guardianEmails } = useGuardianAlert();
+  const { alerts, activeAlert, dismissActive, dismissAlert, deleteAlert, unreadCount, emailSentMsg } = useGuardianAlert();
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'sent' | 'pending' | 'failed'>('all');
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
-  const [testEmailMsg, setTestEmailMsg] = useState('');
   const [toastMsg, setToastMsg] = useState('');
+  const isLoggedIn = !!localStorage.getItem('token');
 
-  const showToast = (msg: string) => {
+  // Show emailSentMsg from hook as a toast
+  const prevEmailSentMsg = useRef('');
+  useEffect(() => {
+    if (emailSentMsg && emailSentMsg !== prevEmailSentMsg.current) {
+      setToastMsg(emailSentMsg);
+      prevEmailSentMsg.current = emailSentMsg;
+      setTimeout(() => setToastMsg(''), 7000);
+    }
+  }, [emailSentMsg]);
+
+  const showToast = (msg: string, duration = 4000) => {
     setToastMsg(msg);
-    setTimeout(() => setToastMsg(''), 3500);
+    setTimeout(() => setToastMsg(''), duration);
   };
 
   const filteredAlerts = alerts.filter((a) => {
@@ -310,74 +294,20 @@ export default function AlertsPage() {
     try {
       const result = await emailNotificationService.sendGuardianAlert(alert);
       if (result.success) {
-        // Update status in storage via service
         const { guardianAlertService } = await import('@/services/guardianAlertService');
         guardianAlertService.markSent(alert.id, result.messageId);
-        showToast(result.simulated
-          ? 'Email simulated (no API configured). Configure Email API in Settings.'
-          : 'Email resent successfully!');
+        showToast('Email resent successfully!');
       } else {
         const { guardianAlertService } = await import('@/services/guardianAlertService');
         guardianAlertService.markFailed(alert.id, result.error);
         showToast(`Resend failed: ${result.error}`);
       }
     } catch (err) {
-      showToast('Resend failed — check your Email API settings.');
+      showToast('Resend failed — check your connection.');
     } finally {
       setResendingId(null);
     }
   }, [resendingId]);
-
-  // Send a test email to all guardian emails
-  const handleSendTestEmail = useCallback(async () => {
-    if (guardianEmails.length === 0) {
-      showToast('No guardian emails configured. Add one in Settings first.');
-      return;
-    }
-    setTestEmailStatus('sending');
-    setTestEmailMsg('');
-
-    const testAlert = {
-      id: `test_${Date.now()}`,
-      trigger: 'HIGH_INTENSITY' as const,
-      severity: 'warning' as const,
-      emotion: 'Anxious',
-      confidence: 85,
-      intensity: 82,
-      intensityLabel: 'High',
-      message: 'This is a test alert from EmpathAI to verify your guardian notification setup.',
-      guardianEmails,
-      status: 'pending' as const,
-      timestamp: Date.now(),
-      sessionId: 'test-session',
-    };
-
-    try {
-      const result = await emailNotificationService.sendGuardianAlert(testAlert);
-      if (result.success) {
-        setTestEmailStatus('sent');
-        setTestEmailMsg(result.simulated
-          ? `Simulated — no Email API configured. Configure it in Settings to send real emails to: ${guardianEmails.join(', ')}`
-          : `Test email sent to: ${guardianEmails.join(', ')}`);
-      } else {
-        setTestEmailStatus('failed');
-        setTestEmailMsg(result.error || 'Unknown error');
-      }
-    } catch {
-      setTestEmailStatus('failed');
-      setTestEmailMsg('Network error — check your Email API settings.');
-    }
-
-    setTimeout(() => setTestEmailStatus('idle'), 6000);
-  }, [guardianEmails]);
-
-  const testBtnConfig = {
-    idle: { label: 'Send Test Email', icon: 'ri-mail-send-line', color: '#6C63FF', bg: 'rgba(108,99,255,0.12)', border: 'rgba(108,99,255,0.25)' },
-    sending: { label: 'Sending...', icon: 'ri-loader-4-line animate-spin', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.25)' },
-    sent: { label: 'Email Sent!', icon: 'ri-check-line', color: '#00D4AA', bg: 'rgba(0,212,170,0.1)', border: 'rgba(0,212,170,0.25)' },
-    failed: { label: 'Send Failed', icon: 'ri-close-line', color: '#EF4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)' },
-  };
-  const tbc = testBtnConfig[testEmailStatus];
 
   return (
     <div className="min-h-screen p-6 lg:p-8" style={{ background: '#07070E' }}>
@@ -410,16 +340,6 @@ export default function AlertsPage() {
               {unreadCount} pending alert{unreadCount > 1 ? 's' : ''}
             </div>
           )}
-          <button
-            onClick={() => navigate('/settings')}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer whitespace-nowrap transition-all hover:opacity-80"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#9CA3AF' }}
-          >
-            <div className="w-3.5 h-3.5 flex items-center justify-center">
-              <i className="ri-settings-3-line text-xs"></i>
-            </div>
-            Configure Emails
-          </button>
         </div>
       </div>
 
@@ -428,84 +348,26 @@ export default function AlertsPage() {
         <AlertBanner alert={activeAlert} onDismiss={dismissActive} />
       )}
 
-      {/* Guardian Email Status Card */}
-      <div
-        className="p-5 rounded-2xl mb-6"
-        style={{ background: '#13131A', border: '1px solid rgba(255,255,255,0.06)' }}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: guardianEmails.length > 0 ? 'rgba(0,212,170,0.12)' : 'rgba(245,158,11,0.12)' }}
-            >
-              <div className="w-5 h-5 flex items-center justify-center">
-                <i
-                  className={`${guardianEmails.length > 0 ? 'ri-shield-user-line' : 'ri-shield-line'} text-lg`}
-                  style={{ color: guardianEmails.length > 0 ? '#00D4AA' : '#F59E0B' }}
-                ></i>
-              </div>
-            </div>
-            <div>
-              <p className="text-white text-sm font-semibold mb-1">Guardian Email Recipients</p>
-              {guardianEmails.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {guardianEmails.map((email) => (
-                    <span
-                      key={email}
-                      className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full"
-                      style={{ background: 'rgba(0,212,170,0.08)', border: '1px solid rgba(0,212,170,0.2)', color: '#00D4AA' }}
-                    >
-                      <div className="w-3 h-3 flex items-center justify-center">
-                        <i className="ri-mail-line text-xs"></i>
-                      </div>
-                      {email}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-yellow-400 text-xs">
-                  No guardian emails configured —{' '}
-                  <button onClick={() => navigate('/settings')} className="underline cursor-pointer">
-                    add one in Settings
-                  </button>
-                </p>
-              )}
-              {!emailNotificationService.isConfigured() && (
-                <p className="text-gray-500 text-xs mt-1.5">
-                  Email API not configured — alerts will be simulated.{' '}
-                  <button onClick={() => navigate('/settings')} className="text-gray-300 underline cursor-pointer">
-                    Set up Email API →
-                  </button>
-                </p>
-              )}
-            </div>
+      {/* Login prompt when not authenticated */}
+      {!isLoggedIn && (
+        <div
+          className="mb-6 p-4 rounded-2xl flex items-center gap-4"
+          style={{ background: 'rgba(108,99,255,0.08)', border: '1px solid rgba(108,99,255,0.25)' }}
+        >
+          <i className="ri-lock-line text-lg" style={{ color: '#6C63FF' }}></i>
+          <div className="flex-1">
+            <p className="text-white text-sm font-medium">Sign in to see your real alert history</p>
+            <p className="text-gray-400 text-xs mt-0.5">Alerts are synced to your account when logged in.</p>
           </div>
-
-          {/* Test email button */}
-          <div className="flex flex-col items-end gap-2 flex-shrink-0">
-            <button
-              onClick={handleSendTestEmail}
-              disabled={testEmailStatus === 'sending'}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap transition-all hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: tbc.bg, border: `1px solid ${tbc.border}`, color: tbc.color }}
-            >
-              <div className="w-3.5 h-3.5 flex items-center justify-center">
-                <i className={`${tbc.icon} text-xs`}></i>
-              </div>
-              {tbc.label}
-            </button>
-            {testEmailMsg && (
-              <p
-                className="text-xs max-w-xs text-right"
-                style={{ color: testEmailStatus === 'sent' ? '#00D4AA' : '#EF4444' }}
-              >
-                {testEmailMsg}
-              </p>
-            )}
-          </div>
+          <button
+            onClick={() => navigate('/login')}
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer transition-all hover:opacity-90"
+            style={{ background: '#6C63FF' }}
+          >
+            Sign In
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -608,123 +470,6 @@ export default function AlertsPage() {
         )}
       </div>
 
-      {/* How email delivery works */}
-      <div
-        className="p-6 rounded-2xl mb-6"
-        style={{ background: '#13131A', border: '1px solid rgba(255,255,255,0.06)' }}
-      >
-        <div className="flex items-center gap-2 mb-5">
-          <div className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ background: 'rgba(0,212,170,0.12)' }}>
-            <i className="ri-mail-settings-line text-sm" style={{ color: '#00D4AA' }}></i>
-          </div>
-          <p className="text-white text-sm font-semibold">How Email Delivery Works</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            {
-              step: '01',
-              icon: 'ri-scan-line',
-              color: '#6C63FF',
-              title: 'Distress Detected',
-              desc: 'EmpathAI detects a negative emotion pattern that meets one of the trigger conditions.',
-            },
-            {
-              step: '02',
-              icon: 'ri-mail-send-line',
-              color: '#F59E0B',
-              title: 'Email Dispatched',
-              desc: 'An alert email is automatically sent to all configured guardian email addresses via your Email API.',
-            },
-            {
-              step: '03',
-              icon: 'ri-mail-check-line',
-              color: '#00D4AA',
-              title: 'Delivery Confirmed',
-              desc: 'Status updates to "Email Sent". Failed deliveries can be resent manually from this page.',
-            },
-          ].map((item) => (
-            <div
-              key={item.step}
-              className="p-4 rounded-xl"
-              style={{ background: '#1C1C28', border: '1px solid rgba(255,255,255,0.05)' }}
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${item.color}18` }}
-                >
-                  <div className="w-4 h-4 flex items-center justify-center">
-                    <i className={`${item.icon} text-sm`} style={{ color: item.color }}></i>
-                  </div>
-                </div>
-                <span className="text-xs font-bold" style={{ color: item.color }}>{item.step}</span>
-              </div>
-              <p className="text-white text-sm font-semibold mb-1.5">{item.title}</p>
-              <p className="text-gray-400 text-xs leading-relaxed">{item.desc}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Setup CTA if not configured */}
-        {!emailNotificationService.isConfigured() && (
-          <div
-            className="mt-4 p-4 rounded-xl flex items-center justify-between gap-4"
-            style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-4 h-4 flex items-center justify-center">
-                <i className="ri-information-line text-sm" style={{ color: '#F59E0B' }}></i>
-              </div>
-              <p className="text-yellow-300 text-xs">
-                Email API not configured — alerts are currently being simulated. Set up your Email API to send real notifications.
-              </p>
-            </div>
-            <button
-              onClick={() => navigate('/settings')}
-              className="px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer whitespace-nowrap transition-all hover:opacity-80 flex-shrink-0"
-              style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', color: '#F59E0B' }}
-            >
-              Configure Now
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Trigger Conditions */}
-      <div
-        className="p-6 rounded-2xl"
-        style={{ background: '#13131A', border: '1px solid rgba(255,255,255,0.06)' }}
-      >
-        <div className="flex items-center gap-2 mb-5">
-          <p className="text-white text-sm font-semibold">Alert Trigger Conditions</p>
-          <span
-            className="text-xs px-2 py-0.5 rounded-full"
-            style={{ background: 'rgba(108,99,255,0.1)', color: '#8B5CF6' }}
-          >
-            Auto-monitored
-          </span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {triggerConditions.map((tc) => (
-            <div
-              key={tc.title}
-              className="p-4 rounded-xl"
-              style={{ background: '#1C1C28', border: '1px solid rgba(255,255,255,0.05)' }}
-            >
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-                style={{ background: `${tc.color}18` }}
-              >
-                <div className="w-5 h-5 flex items-center justify-center">
-                  <i className={`${tc.icon} text-lg`} style={{ color: tc.color }}></i>
-                </div>
-              </div>
-              <p className="text-white text-sm font-semibold mb-2">{tc.title}</p>
-              <p className="text-gray-400 text-xs leading-relaxed">{tc.description}</p>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

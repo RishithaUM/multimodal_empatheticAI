@@ -1,92 +1,100 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { chatMessages as initialMessages } from '@/mocks/emotions';
 import { useEmotionWebSocket } from '@/hooks/useEmotionWebSocket';
+import type { FusedResult } from '@/services/emotionApi';
 import ChatHeader from './components/ChatHeader';
 import EmotionContextBar from './components/EmotionContextBar';
 import MessageBubble from './components/MessageBubble';
 import type { ChatMessage } from './components/MessageBubble';
 import QuickReplies from './components/QuickReplies';
 import ChatInput from './components/ChatInput';
-import EmotionSidebar from './components/EmotionSidebar';
 
-// ─── AI Response Engine ───────────────────────────────────────────────────────
+const HISTORY_API = 'http://localhost:5000/api/emotion/history?limit=1';
 
-const aiResponsesByEmotion: Record<string, string[]> = {
-  Anxious: [
-    "I can sense you might be feeling anxious right now. That's completely valid. Would you like to try a quick breathing exercise together?",
-    "Anxiety can feel overwhelming, but you're not alone. Let's break down what's on your mind into smaller, manageable pieces.",
-    "Based on your current emotional state, I'd suggest the 4-7-8 breathing technique. Inhale for 4 seconds, hold for 7, exhale for 8. Want to try it?",
-    "I notice elevated anxiety in your readings. Sometimes just naming the feeling helps — what's the main thing weighing on you right now?",
-  ],
-  Sad: [
-    "I hear you, and I want you to know that what you're feeling is completely valid. Sadness is a natural part of being human.",
-    "It sounds like you're going through a tough time. I'm here to listen — would you like to talk about what's been happening?",
-    "Sometimes sadness needs to be felt before it can pass. Is there something specific that's been bringing you down lately?",
-    "Your emotional readings show some sadness. Remember, reaching out — even to an AI — is a sign of strength. What's on your heart?",
-  ],
-  Happy: [
-    "Your positive energy is coming through clearly! What's been making you feel so good today?",
-    "I love seeing you in such a great mood! This is a perfect time to tackle something you've been putting off.",
-    "That happiness is contagious! What's the highlight of your day so far?",
-    "You're radiating positive vibes right now. Want to channel this energy into something meaningful?",
-  ],
-  Excited: [
-    "Your excitement is palpable! What's got you so energized right now?",
-    "That's a lot of great energy! Let's make sure we direct it somewhere productive. What are you most excited about?",
-    "I can feel your enthusiasm! Just remember to pause and think before making any big decisions in this state.",
-    "Wow, you're really fired up! Tell me what's going on — I want to hear all about it.",
-  ],
-  Angry: [
-    "I can sense some frustration in your current state. It's okay to feel angry — what's been triggering this for you?",
-    "Anger often signals that something important to us has been violated. What's the core issue here?",
-    "Before we dive in, let's take a breath together. What happened that's got you feeling this way?",
-    "Your feelings are valid. Sometimes anger is just hurt wearing a different mask. What's really going on?",
-  ],
-  Calm: [
-    "You're in a beautifully calm state right now. This is ideal for deep reflection or focused work. What's on your mind?",
-    "That peaceful energy you're carrying is wonderful. What would you like to explore or accomplish in this mindset?",
-    "Calm is such a powerful state. You have great clarity right now — is there something you've been wanting to think through?",
-  ],
-  Fearful: [
-    "I notice some fear in your readings. Fear is your mind trying to protect you — let's look at what it's responding to.",
-    "It's okay to be scared. Can you tell me more about what's making you feel fearful right now?",
-    "Fear often shrinks when we shine a light on it. What specifically is worrying you?",
-  ],
-  Neutral: [
-    "I hear you. That sounds really challenging. Can you tell me more about what's been on your mind?",
-    "Based on your current emotional state, I'd suggest taking a few deep breaths. Would you like to try a quick mindfulness exercise?",
-    "It's completely normal to feel that way. Your emotions are valid. What would help you most right now?",
-    "I've noticed a pattern in your recent sessions — you tend to feel more anxious in the afternoons. Does that resonate with you?",
-    "That's a really insightful observation. Emotional awareness is the first step toward positive change.",
-  ],
-};
+/** Map a backend DB record → FusedResult shape */
+function recordToFused(rec: Record<string, unknown>): FusedResult {
+  const modDict = (rec.modalities ?? {}) as Record<string, { emotion: string; confidence: number; scores?: { emotion: string; confidence: number }[] }>;
+  const modalities = Object.entries(modDict).map(([key, val]) => ({
+    modality: key as 'face' | 'voice' | 'text',
+    emotion: val.emotion ?? '',
+    confidence: Math.round((val.confidence ?? 0) * (val.confidence <= 1 ? 100 : 1)),
+    scores: val.scores ?? [{ emotion: val.emotion, confidence: Math.round((val.confidence ?? 0) * (val.confidence <= 1 ? 100 : 1)) }],
+  }));
+  const conf = rec.confidence as number;
+  return {
+    emotion: rec.emotion as string,
+    confidence: Math.round(conf > 1 ? conf : conf * 100),
+    intensity: rec.intensity as number ?? 50,
+    intensityLabel: (rec.intensity_label as 'Low' | 'Medium' | 'High') ?? 'Medium',
+    modalities,
+    fusionWeights: (rec.fusion_weights as Record<string, number>) ?? {},
+    timestamp: rec.created_at ? new Date(rec.created_at as string).getTime() : Date.now(),
+  };
+}
 
-const defaultResponses = [
-  "I hear you. That sounds really challenging. Can you tell me more about what's been on your mind?",
-  "Based on your current emotional state, I'd suggest taking a few deep breaths. Would you like to try a quick mindfulness exercise?",
-  "It's completely normal to feel that way. Your emotions are valid. What would help you most right now?",
-  "That's a really insightful observation. Emotional awareness is the first step toward positive change.",
-];
+/** Load the most recent real analysis — tries backend API first, falls back to localStorage */
+async function fetchLastAnalysis(): Promise<FusedResult | null> {
+  const token = localStorage.getItem('token');
+  if (token) {
+    try {
+      const res = await fetch(HISTORY_API, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json() as { history?: Record<string, unknown>[] };
+        const rec = data.history?.[0];
+        if (rec) return recordToFused(rec);
+      }
+    } catch { /* fall through */ }
+  }
+  // localStorage fallback (unauthenticated saves)
+  try {
+    const raw = localStorage.getItem('empathAI_history');
+    if (raw) {
+      const arr = JSON.parse(raw) as FusedResult[];
+      if (arr[0]) return arr[0];
+    }
+  } catch { /* ignore */ }
+  return null;
+}
 
-function getAIResponse(emotion: string | null): string {
-  const pool = emotion && aiResponsesByEmotion[emotion]
-    ? aiResponsesByEmotion[emotion]
-    : defaultResponses;
-  return pool[Math.floor(Math.random() * pool.length)];
+const CHAT_API = 'http://localhost:5000/api/chat/ollama-message';
+
+async function fetchOllamaReply(
+  message: string,
+  emotion: string | null,
+  history: { role: string; content: string }[]
+): Promise<string> {
+  const res = await fetch(CHAT_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, emotion: emotion || 'neutral', history }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  const data = await res.json() as { reply?: string };
+  return data.reply || "I'm here for you. What would you like to talk about?";
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    initialMessages.map((m) => ({ ...m, role: m.role as 'ai' | 'user' }))
-  );
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [sessionStart] = useState(new Date());
+  const [lastAnalysis, setLastAnalysis] = useState<FusedResult | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Keep a rolling history for Ollama context (role/content pairs)
+  const historyRef = useRef<{ role: string; content: string }[]>([]);
 
   const { currentEmotion, wsStatus, connect, disconnect } = useEmotionWebSocket();
+
+  // Fetch the most recent real analysis on mount
+  useEffect(() => {
+    fetchLastAnalysis().then((r) => { if (r) setLastAnalysis(r); });
+  }, []);
+
+  // Use real WS data only when actually connected; fall back to last saved analysis
+  const isLive = wsStatus === 'connected';
+  const displayEmotion: FusedResult | null = isLive ? currentEmotion : (lastAnalysis ?? null);
 
   useEffect(() => {
     const savedUrl = localStorage.getItem('empathai_ws_url') || undefined;
@@ -108,23 +116,39 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setIsTyping(true);
 
-    const delay = 1000 + Math.random() * 1000;
-    await new Promise((r) => setTimeout(r, delay));
+    // Append to rolling history
+    historyRef.current = [...historyRef.current, { role: 'user', content: text }];
 
-    const emotion = currentEmotion?.emotion || null;
-    const aiMsg: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: 'ai',
-      text: getAIResponse(emotion),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      emotion: emotion || undefined,
-      confidence: currentEmotion?.confidence,
-    };
-    setMessages((prev) => [...prev, aiMsg]);
-    setIsTyping(false);
+    try {
+      const emotion = displayEmotion?.emotion || null;
+      const reply = await fetchOllamaReply(text, emotion, historyRef.current.slice(-20));
+
+      const aiMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'ai',
+        text: reply,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        emotion: emotion || undefined,
+        confidence: displayEmotion?.confidence,
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+      historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }];
+    } catch (err) {
+      const errText = err instanceof Error ? err.message : 'Could not reach Ollama.';
+      const errMsg: ChatMessage = {
+        id: (Date.now() + 2).toString(),
+        role: 'ai',
+        text: `⚠️ ${errText}`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setIsTyping(false);
+    }
   }, [currentEmotion]);
 
   const handleClearChat = useCallback(() => {
+    historyRef.current = [];
     setMessages([{
       id: 'welcome',
       role: 'ai',
@@ -155,7 +179,7 @@ export default function ChatPage() {
     <div className="h-screen flex flex-col" style={{ background: '#07070E' }}>
       {/* Header */}
       <ChatHeader
-        currentEmotion={currentEmotion}
+        currentEmotion={displayEmotion}
         wsStatus={wsStatus}
         messageCount={messages.length}
         onClearChat={handleClearChat}
@@ -163,7 +187,7 @@ export default function ChatPage() {
       />
 
       {/* Emotion context bar */}
-      <EmotionContextBar currentEmotion={currentEmotion} />
+      <EmotionContextBar currentEmotion={displayEmotion} isLive={isLive} />
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
@@ -225,7 +249,7 @@ export default function ChatPage() {
 
           {/* Quick replies */}
           <QuickReplies
-            emotion={currentEmotion?.emotion || null}
+            emotion={displayEmotion?.emotion || null}
             onSelect={handleQuickReply}
           />
 
@@ -235,26 +259,6 @@ export default function ChatPage() {
             isTyping={isTyping}
           />
         </div>
-
-        {/* Sidebar toggle button (mobile) */}
-        <button
-          onClick={() => setShowSidebar((v) => !v)}
-          className="hidden lg:flex absolute right-72 top-1/2 -translate-y-1/2 w-5 h-10 items-center justify-center cursor-pointer z-10"
-          style={{ background: '#1C1C28', borderRadius: '6px 0 0 6px', border: '1px solid rgba(255,255,255,0.08)' }}
-        >
-          <div className="w-3 h-3 flex items-center justify-center">
-            <i className={showSidebar ? 'ri-arrow-right-s-line text-gray-500 text-xs' : 'ri-arrow-left-s-line text-gray-500 text-xs'}></i>
-          </div>
-        </button>
-
-        {/* Emotion sidebar */}
-        {showSidebar && (
-          <EmotionSidebar
-            currentEmotion={currentEmotion}
-            messageCount={messages.length}
-            sessionStart={sessionStart}
-          />
-        )}
       </div>
     </div>
   );

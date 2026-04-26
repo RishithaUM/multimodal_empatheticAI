@@ -70,7 +70,7 @@ export default function RegisterPage() {
       localStorage.setItem('token', data.token);
       setLoading(false);
       setSuccess(true);
-      setTimeout(() => navigate('/dashboard'), 2000);
+      setTimeout(() => navigate('/analyze'), 2000);
     } catch (error) {
       setErrors({ username: 'Connection error. Is the backend running?' });
       setLoading(false);

@@ -1,8 +1,88 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, make_response
 from app.services import token_required
 from datetime import datetime
+import requests as http_requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 chat_bp = Blueprint('chat', __name__)
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "llama3.1:8b"
+
+
+@chat_bp.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    return response
+
+
+@chat_bp.route('/ollama-message', methods=['POST', 'OPTIONS'])
+def ollama_message():
+    """Send chat message and get Ollama-powered empathetic response (no auth required)"""
+    if request.method == 'OPTIONS':
+        return make_response('', 204)
+
+    try:
+        data = request.get_json(force=True) or {}
+        message = (data.get('message') or '').strip()
+        emotion = (data.get('emotion') or 'neutral').strip()
+        history = data.get('history') or []  # list of {role, content}
+
+        if not message:
+            return jsonify({'error': 'Message is required'}), 400
+
+        # Build conversation context for Ollama
+        system_prompt = (
+            f"You are EmpathAI, a compassionate emotional support AI assistant. "
+            f"The user is currently feeling {emotion} (detected by emotion sensors). "
+            f"Respond with empathy and warmth. Be concise — keep responses under 3 sentences "
+            f"unless the user explicitly asks for more detail. Do not mention being an AI unnecessarily."
+        )
+
+        # Build prompt with history
+        conversation = ""
+        for turn in history[-10:]:  # cap at last 10 exchanges
+            role = turn.get('role', 'user')
+            content = turn.get('content', '')
+            label = "User" if role == "user" else "EmpathAI"
+            conversation += f"{label}: {content}\n"
+        conversation += f"User: {message}\nEmpathAI:"
+
+        full_prompt = f"{system_prompt}\n\n{conversation}"
+
+        response = http_requests.post(
+            OLLAMA_URL,
+            json={"model": OLLAMA_MODEL, "prompt": full_prompt, "stream": False},
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+        reply = (result.get('response') or '').strip()
+
+        return jsonify({
+            'success': True,
+            'reply': reply,
+            'emotion_context': emotion,
+            'timestamp': datetime.utcnow().isoformat(),
+        }), 200
+
+    except http_requests.exceptions.ConnectionError:
+        return jsonify({'error': 'Ollama is not running. Please start Ollama first.'}), 503
+    except http_requests.exceptions.Timeout:
+        return jsonify({'error': 'Ollama took too long to respond.'}), 504
+    except Exception as e:
+        logger.error(f"Ollama chat error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+from typing import cast
+from app import AppFlask
+
+def _app() -> AppFlask:
+    return cast(AppFlask, current_app._get_current_object())  # type: ignore[attr-defined]
 
 
 # Emotion-aware response templates
@@ -50,7 +130,7 @@ EMOTION_RESPONSES = {
 def send_message():
     """Send chat message and get emotion-aware response"""
     try:
-        user_id = request.user_id
+        user_id = request.user_id  # type: ignore[attr-defined]
         data = request.get_json()
         
         message = data.get('message', '').strip()

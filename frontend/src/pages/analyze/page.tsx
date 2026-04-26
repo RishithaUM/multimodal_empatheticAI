@@ -5,6 +5,7 @@ import { useVoiceAnalysis } from '@/hooks/useVoiceAnalysis';
 import { useTextAnalysis } from '@/hooks/useTextAnalysis';
 import { fuseEmotions } from '@/services/emotionApi';
 import type { ModalityResult } from '@/services/emotionApi';
+import { useGuardianAlert } from '@/hooks/useGuardianAlert';
 
 // ── Timer hook ────────────────────────────────────────────────────────────────
 function useTimer(running: boolean) {
@@ -109,6 +110,7 @@ function StatusDot({ active, pulse }: { active: boolean; pulse?: boolean }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function AnalyzePage() {
   const navigate = useNavigate();
+  const { evaluate } = useGuardianAlert();
 
   // ── Face with streaming emotion detection ─────────────────────────────────
   const {
@@ -232,9 +234,9 @@ export default function AnalyzePage() {
 
     // Text
     if (textEnabled && text.trim()) {
-      setAnalysisStep('Analyzing text sentiment...');
+      setAnalysisStep('Analyzing text emotion...');
       await new Promise((r) => setTimeout(r, 300));
-      const r = analyzeText();
+      const r = await analyzeText();
       if (r) results.push(r);
     }
 
@@ -245,11 +247,14 @@ export default function AnalyzePage() {
     setIsAnalyzing(false);
     setAnalysisStep('');
 
+    // Check guardian alert conditions (3 consecutive same emotion etc.)
+    evaluate(fused, 'analyze-session');
+
     navigate('/results', { state: { fused, modalities: results } });
   }, [
     hasAnyInput, isAnalyzing, isCapturing,
     capturedFaceResult, capturedVoiceResult,
-    textEnabled, text, analyzeText, navigate,
+    textEnabled, text, analyzeText, navigate, evaluate,
   ]);
 
   // ── Collected inputs summary ──────────────────────────────────────────────
@@ -685,6 +690,32 @@ export default function AnalyzePage() {
 
             {textEnabled && (
               <div className="px-5 pb-5">
+                {/* Quick-select phrase buttons */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {[
+                    { label: '😠 Angry', text: 'I am furious and really angry right now.' },
+                    { label: '🤢 Disgusted', text: 'This is absolutely disgusting and revolting.' },
+                    { label: '😨 Fearful', text: 'I feel very anxious and scared right now.' },
+                    { label: '😊 Happy', text: 'I am feeling great and very happy today!' },
+                    { label: '😐 Neutral', text: 'Everything is okay. Nothing special today.' },
+                    { label: '😢 Sad', text: 'I feel deeply sad and hopeless right now.' },
+                    { label: '😲 Surprised', text: 'Wow, I did not expect that at all!' },
+                  ].map(({ label, text: phrase }) => (
+                    <button
+                      key={label}
+                      onClick={() => setText(phrase)}
+                      disabled={isAnalyzing}
+                      className="text-xs px-3 py-1.5 rounded-full font-medium transition-all disabled:opacity-40"
+                      style={{
+                        background: text === phrase ? 'rgba(236,72,153,0.25)' : 'rgba(255,255,255,0.06)',
+                        border: text === phrase ? '1px solid rgba(236,72,153,0.6)' : '1px solid rgba(255,255,255,0.1)',
+                        color: text === phrase ? '#EC4899' : '#9CA3AF',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}

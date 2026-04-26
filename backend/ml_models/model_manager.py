@@ -3,8 +3,21 @@ Unified ML Model Manager
 Coordinates all emotion detection models
 """
 from ml_models.face.face_emotion_cnn import FaceEmotionCNN
-from ml_models.voice.voice_emotion_bilstm import VoiceEmotionBiLSTM
 from ml_models.text.text_emotion_transformer import TextEmotionTransformer
+from app.services.wav2vec2_emotion import DualModelEmotionDetector
+import os
+import warnings
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# Suppress warnings during model loading
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+
+# Configuration for voice emotion detection model
+VOICE_EMOTION_MODEL = os.getenv('VOICE_EMOTION_MODEL', 'kvilla').lower()  # 'kvilla' or 'wav2vec2'
 
 
 class MLModelManager:
@@ -20,26 +33,73 @@ class MLModelManager:
     
     def _load_models(self):
         """Load all models with error handling"""
+        logger.info("=" * 70)
+        logger.info("LOADING ML MODELS")
+        logger.info("=" * 70)
+        
         try:
-            print("Loading Face Emotion CNN...")
+            logger.info("Loading Face Emotion CNN...")
             self.face_model = FaceEmotionCNN(device=self.device)
-            print("✓ Face model loaded")
+            logger.info("✅ Face model loaded successfully")
         except Exception as e:
-            print(f"✗ Failed to load face model: {str(e)}")
+            logger.error(f"❌ Failed to load face model: {str(e)}")
+        
+        # Load voice emotion detection
+        self._load_voice_model()
         
         try:
-            print("Loading Voice Emotion BiLSTM...")
-            self.voice_model = VoiceEmotionBiLSTM(device=self.device)
-            print("✓ Voice model loaded")
-        except Exception as e:
-            print(f"✗ Failed to load voice model: {str(e)}")
-        
-        try:
-            print("Loading Text Emotion Transformer...")
+            logger.info("Loading Text Emotion (Ollama)...")
             self.text_model = TextEmotionTransformer(device=self.device)
-            print("✓ Text model loaded")
+            logger.info("✅ Text model loaded successfully")
         except Exception as e:
-            print(f"✗ Failed to load text model: {str(e)}")
+            logger.error(f"❌ Failed to load text model: {str(e)}")
+        
+        logger.info("=" * 70)
+    
+    def _load_voice_model(self):
+        """Load voice emotion model (Kvilla + SUPERB or fallback to wav2vec2)"""
+        # Try Kvilla + SUPERB first if configured or available
+        if VOICE_EMOTION_MODEL == 'kvilla':
+            try:
+                logger.info("Attempting to load Kvilla + SUPERB Fusion model...")
+                from ml_models.voice.voice_emotion_kvilla_superb import VoiceEmotionBiLSTM
+                
+                # Auto-detect local Kvilla model
+                kvilla_path = None
+                possible_paths = [
+                    Path(__file__).parent.parent.parent / 'models' / 'Kvilla',
+                    Path(__file__).parent.parent.parent / 'models' / 'kvilla',
+                ]
+                
+                for path in possible_paths:
+                    if path.exists() and (path / 'config.json').exists():
+                        kvilla_path = str(path)
+                        logger.info(f"Found local Kvilla model: {kvilla_path}")
+                        break
+                
+                self.voice_model = VoiceEmotionBiLSTM(device=self.device, kvilla_path=kvilla_path)
+                
+                if self.voice_model.fusion.kvilla.is_loaded:
+                    logger.info("✅ Kvilla + SUPERB Fusion model loaded successfully (source: {})".format(
+                        self.voice_model.fusion.kvilla.model_source
+                    ))
+                else:
+                    logger.warning("⚠️  Kvilla model not loaded, using SUPERB only")
+                
+                return
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to load Kvilla model: {str(e)}")
+                logger.info("Falling back to DualModel (wav2vec2 + SUPERB ER)...")
+        else:
+            logger.info("Using DualModel (wav2vec2 + SUPERB ER) as configured...")
+        
+        # Fallback to original implementation
+        try:
+            self.voice_model = DualModelEmotionDetector()
+            logger.info("✅ Voice model loaded successfully (DualModel - wav2vec2 + SUPERB ER)")
+        except Exception as e:
+            logger.error(f"❌ Failed to load voice model: {str(e)}")
+
     
     def detect_face_emotion(self, image_input):
         """Detect emotion from face"""

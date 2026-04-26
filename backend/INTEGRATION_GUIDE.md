@@ -11,7 +11,7 @@ This document describes the complete integration between the React frontend and 
 │                    React Frontend (Vite)                     │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  Components & Pages                                  │   │
-│  │  - Dashboard, Analyze, Chat, Results                 │   │
+│  │  - Analyze, Chat, History, Alerts, Settings           │   │
 │  └──────────────────────────────────────────────────────┘   │
 │              │                    │                           │
 │              ↓                    ↓                           │
@@ -50,7 +50,7 @@ This document describes the complete integration between the React frontend and 
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────┐  │
 │  │  ML Models       │  │  Cloudinary      │  │ MongoDB  │  │
 │  │  - Face CNN      │  │  (media storage) │  │ (data)   │  │
-│  │  - Voice BiLSTM  │  └──────────────────┘  └──────────┘  │
+│  │  - Voice Kvilla  │  └──────────────────┘  └──────────┘  │
 │  │  - Text Transformer                                   │   │
 │  └──────────────────┘                                     │   │
 └─────────────────────────────────────────────────────────────┘
@@ -90,7 +90,7 @@ Frontend                                Backend
    │                        ◆ Load ML models
    │                        ◆ Run inference:
    │                        ├─ Face CNN → emotion
-   │                        ├─ Voice BiLSTM → emotion
+   │                        ├─ Voice Dual-Model → emotion
    │                        └─ Text Transformer → emotion
    │                        ◆ Fuse emotions (weighted avg)
    │                        ◆ Check distress alerts
@@ -114,11 +114,11 @@ Frontend                                Backend
 ```
 Frontend                                Backend
    │                                      │
-   ├─ Emotion detected (sad, high intensity)
+   ├─ Emotion detected (3 consecutive same emotion)
    │                     /api/emotion/analyze
    │                                      │
    │                        ◆ Check if emotion triggers alert
-   │                        ◆ HIGH_INTENSITY rule applied
+   │                        ◆ CONSECUTIVE SAME EMOTION (×3) rule applied
    │                        ◆ Severity: critical
    │                        ◆ Create alert record
    │                        ◆ Send emails to guardians
@@ -209,7 +209,7 @@ socket.emit('subscribe_emotion_stream', { user_id: userId });
 // Listen for emotions
 socket.on('emotion_detected', (data) => {
   console.log('New emotion:', data);
-  updateDashboard(data);
+  // Update UI with latest emotion data
 });
 
 // Listen for alerts

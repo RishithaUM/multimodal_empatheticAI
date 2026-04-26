@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { analyzeAudioBuffer, mapVoiceToEmotion } from '@/services/emotionApi';
 import type { ModalityResult, VoiceAnalysisResult } from '@/services/emotionApi';
 
 export type VoiceStatus = 'idle' | 'requesting' | 'recording' | 'processing' | 'done' | 'error' | 'unsupported';
@@ -17,6 +16,102 @@ export interface UseVoiceAnalysisReturn {
 }
 
 const WAVEFORM_BARS = 20;
+
+/**
+ * Convert Float32 PCM audio to WAV format
+ */
+async function encodeWAV(pcmData: Float32Array, sampleRate: number): Promise<ArrayBuffer> {
+  const numChannels = 1;
+  const length = pcmData.length;
+  const bytesPerSample = 2;
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataLength = length * bytesPerSample;
+  const fileLength = 36 + dataLength;
+
+  // Create WAV header and data
+  const arrayBuffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(arrayBuffer);
+
+  // WAV header
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, fileLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true); // subchunk1size
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true); // bits per sample
+  writeString(36, 'data');
+  view.setUint32(40, dataLength, true);
+
+  // Convert float samples to 16-bit PCM
+  let offset = 44;
+  for (let i = 0; i < length; i++) {
+    const sample = Math.max(-1, Math.min(1, pcmData[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    offset += 2;
+  }
+
+  return arrayBuffer;
+}
+
+/**
+ * Convert an ArrayBuffer to base64 safely without large spread operations.
+ */
+async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Failed to convert audio buffer to base64'));
+        return;
+      }
+      const base64 = reader.result.split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+    reader.readAsDataURL(new Blob([buffer], { type: 'audio/wav' }));
+  });
+}
+
+function getUsableAuthToken(): string | null {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) {
+      localStorage.removeItem('token');
+      return null;
+    }
+
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    const exp = Number(decoded?.exp);
+
+    if (!Number.isFinite(exp)) return token;
+
+    const isExpired = Date.now() >= exp * 1000;
+    if (isExpired) {
+      localStorage.removeItem('token');
+      return null;
+    }
+
+    return token;
+  } catch {
+    localStorage.removeItem('token');
+    return null;
+  }
+}
 
 export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -38,15 +133,6 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
     const dataArray = new Uint8Array(bufferLength);
     // Use frequency data - much more responsive for speech visualization
     analyserRef.current.getByteFrequencyData(dataArray);
-
-    // Calculate overall volume for debug
-    const average = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
-    const max = Math.max(...dataArray);
-    
-    // Log every ~2 seconds
-    if (Math.random() < 0.03) {
-      console.log('[Waveform] Volume:', average.toFixed(1), 'Peak:', max, 'Buffer:', bufferLength);
-    }
 
     const step = Math.floor(bufferLength / WAVEFORM_BARS);
     const bars = Array.from({ length: WAVEFORM_BARS }, (_, i) => {
@@ -89,7 +175,6 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
       analyser.maxDecibels = -20;
       source.connect(analyser);
       analyserRef.current = analyser;
-      console.log('[Voice] Audio analyser connected, fftSize:', analyser.fftSize, 'freqBinCount:', analyser.frequencyBinCount);
 
       // Set up MediaRecorder
       const recorder = new MediaRecorder(stream);
@@ -128,36 +213,88 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
         // Stop stream tracks
         streamRef.current?.getTracks().forEach((t) => t.stop());
 
-        // Analyze audio
+        // Send audio to backend for real wav2vec2 + SUPERB ER analysis
         try {
           const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-          const arrayBuffer = await blob.arrayBuffer();
+
+          // Convert WebM to WAV using Web Audio API
+          const webmArrayBuffer = await blob.arrayBuffer();
           const audioCtx = audioContextRef.current || new AudioContext();
-          const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+
+          // Some browsers detach the passed buffer during decode, so decode a cloned copy.
+          const decodeBuffer = webmArrayBuffer.slice(0);
+          const decoded = await audioCtx.decodeAudioData(decodeBuffer);
           const channelData = decoded.getChannelData(0);
 
-          const analysis = analyzeAudioBuffer(channelData, decoded.sampleRate);
-          setAudioAnalysis(analysis);
+          // Convert Float32Array PCM to WAV bytes, then base64 safely.
+          const wavBuffer = await encodeWAV(channelData, decoded.sampleRate);
+          const base64Audio = await arrayBufferToBase64(wavBuffer);
 
-          const result = mapVoiceToEmotion(analysis);
-          setLastResult(result);
-          setVoiceStatus('done');
-          setWaveformData(Array(WAVEFORM_BARS).fill(4));
-          resolve(result);
-        } catch (err) {
-          console.warn('Audio analysis error:', err);
-          // Fallback: use energy-based simulation
-          const fallbackAnalysis: VoiceAnalysisResult = {
-            energy: 45 + Math.round(Math.random() * 30),
-            pitch: 150 + Math.round(Math.random() * 100),
-            tempo: 60 + Math.round(Math.random() * 40),
-            spectralCentroid: 1000 + Math.round(Math.random() * 1500),
+          console.log('[Voice] Sending audio to backend for voice emotion analysis...');
+
+          // Send to backend API
+          const token = getUsableAuthToken();
+          const endpoint = token ? '/api/emotion/detect/voice' : '/api/emotion/detect/voice/test';
+          let response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token && { 'Authorization': `Bearer ${token}` }),
+            },
+            body: JSON.stringify({
+              audio_data: base64Audio,
+            }),
+          });
+
+          // If token expired/invalid, clear it and retry once on test endpoint.
+          if (response.status === 401 && token) {
+            localStorage.removeItem('token');
+            response = await fetch('/api/emotion/detect/voice/test', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                audio_data: base64Audio,
+              }),
+            });
+          }
+
+          if (!response.ok) {
+            const error = await response.json();
+            if (response.status === 401) {
+              throw new Error('Session expired. Please log in again.');
+            }
+            throw new Error(error.error || 'Backend voice analysis failed');
+          }
+
+          const backendResult = await response.json();
+
+          console.log('[Voice] Backend analysis complete:', backendResult);
+
+          // Convert backend result to ModalityResult format
+          const result: ModalityResult = {
+            modality: 'voice',
+            emotion: backendResult.emotion,
+            confidence: Math.round(backendResult.confidence * 100),
+            scores: (backendResult.scores || backendResult.all_scores || {})
+              ? Object.entries(backendResult.scores || backendResult.all_scores).map(([emotion, confidence]: [string, any]) => ({
+                  emotion: emotion.charAt(0).toUpperCase() + emotion.slice(1),
+                  confidence: Math.round(confidence * 100),
+                }))
+              : [],
           };
-          const result = mapVoiceToEmotion(fallbackAnalysis);
+
           setLastResult(result);
           setVoiceStatus('done');
           setWaveformData(Array(WAVEFORM_BARS).fill(4));
           resolve(result);
+        } catch (err: any) {
+          console.error('[Voice] Backend analysis error:', err);
+          setVoiceStatus('error');
+          setVoiceError(err.message || 'Voice analysis failed');
+          setWaveformData(Array(WAVEFORM_BARS).fill(4));
+          resolve(null);
         }
       };
 

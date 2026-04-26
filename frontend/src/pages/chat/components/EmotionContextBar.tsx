@@ -1,8 +1,14 @@
 import type { FusedResult } from '@/services/emotionApi';
-import { emotionColors } from '@/mocks/emotions';
+
+const emotionColors: Record<string, string> = {
+  Happy: '#00D4AA', Sad: '#6C63FF', Anxious: '#F59E0B', Angry: '#EF4444',
+  Neutral: '#94A3B8', Excited: '#EC4899', Calm: '#3B82F6', Fearful: '#8B5CF6',
+  Disgusted: '#10B981', Surprised: '#F97316',
+};
 
 interface EmotionContextBarProps {
   currentEmotion: FusedResult | null;
+  isLive?: boolean;
 }
 
 const emotionEmoji: Record<string, string> = {
@@ -23,7 +29,7 @@ const modalityColorMap: Record<string, string> = {
   text: '#EC4899',
 };
 
-export default function EmotionContextBar({ currentEmotion }: EmotionContextBarProps) {
+export default function EmotionContextBar({ currentEmotion, isLive = false }: EmotionContextBarProps) {
   if (!currentEmotion) {
     return (
       <div
@@ -95,7 +101,11 @@ export default function EmotionContextBar({ currentEmotion }: EmotionContextBarP
       })}
 
       <div className="ml-auto flex-shrink-0">
-        <span className="text-gray-600 text-xs">Live emotion context</span>
+        {isLive ? (
+          <span className="text-xs font-medium" style={{ color: '#00D4AA' }}>● Live emotion context</span>
+        ) : (
+          <span className="text-gray-500 text-xs">Last analysis</span>
+        )}
       </div>
     </div>
   );

@@ -4,12 +4,48 @@ from flask_socketio import SocketIO
 from app.config import config_by_name
 from app.models import Database
 from app.services import EmotionAnalysisService
+from typing import TYPE_CHECKING, Any, Optional
 import os
+import logging
+import warnings
+
+if TYPE_CHECKING:
+    from pymongo.database import Database as MongoDatabase
+
+
+class AppFlask(Flask):
+    """Flask subclass with typed custom attributes to satisfy the type checker."""
+    db: Any
+    socketio: Any
+    emotion_service: Any
+    ml_model_manager: Any
+    deepface_service: Any
+    stability_detectors: Any
+    voice_session_history: Any
+
+# Suppress library warnings for cleaner output
+warnings.filterwarnings('ignore', category=UserWarning, module='torchvision')
+warnings.filterwarnings('ignore', category=FutureWarning, module='huggingface_hub')
+warnings.filterwarnings('ignore', message='.*pretrained.*')
+warnings.filterwarnings('ignore', message='.*resume_download.*')
+
+# Configure logging with cleaner format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)-8s | %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Suppress verbose loggers
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+logging.getLogger('transformers').setLevel(logging.ERROR)
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+logging.getLogger('pytorch_lightning').setLevel(logging.ERROR)
 
 
 def create_app(config_name='development'):
     """Application factory"""
-    app = Flask(__name__)
+    app = AppFlask(__name__)
     
     # Load configuration
     config = config_by_name.get(config_name, 'development')
@@ -37,6 +73,17 @@ def create_app(config_name='development'):
     # Initialize Emotion Analysis Service
     emotion_service = EmotionAnalysisService(max_history=app.config['MAX_EMOTION_HISTORY'])
     app.emotion_service = emotion_service
+    
+    # Initialize ML Model Manager
+    try:
+        logger.info("Initializing ML Model Manager...")
+        from ml_models.model_manager import MLModelManager
+        ml_model_manager = MLModelManager(device='cpu')  # Use 'cuda' if GPU available
+        app.ml_model_manager = ml_model_manager
+        logger.info("✅ ML Model Manager initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize ML Model Manager: {str(e)}")
+        app.ml_model_manager = None
     
     # Register error handlers
     _register_error_handlers(app)
@@ -87,10 +134,11 @@ def _register_error_handlers(app):
 
 def _register_blueprints(app):
     """Register Flask blueprints"""
-    from app.routes import auth_bp, emotion_bp, alerts_bp, settings_bp, media_bp, chat_bp
+    from app.routes import auth_bp, emotion_bp, voice_emotion_bp, alerts_bp, settings_bp, media_bp, chat_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(emotion_bp, url_prefix='/api/emotion')
+    app.register_blueprint(voice_emotion_bp)  # Already has url_prefix in blueprint
     app.register_blueprint(alerts_bp, url_prefix='/api/alerts')
     app.register_blueprint(settings_bp, url_prefix='/api/settings')
     app.register_blueprint(media_bp, url_prefix='/api/media')

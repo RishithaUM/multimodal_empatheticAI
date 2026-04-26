@@ -2,19 +2,17 @@
  * Guardian Alert Service
  * Monitors emotion history for distress patterns and triggers alerts.
  *
- * Trigger conditions:
- * 1. REPEATED_NEGATIVE  — 3+ consecutive negative emotions
- * 2. HIGH_INTENSITY     — single negative emotion with intensity > 80
- * 3. PROLONGED_DISTRESS — 5+ negative emotions within a 30-min window
+ * Trigger condition:
+ * REPEATED_NEGATIVE — same emotion detected 3 consecutive times (any of the 7 emotions)
  *
- * Email delivery is handled by emailNotificationService.
- * Configure the email API endpoint in Settings → Email API.
+ * Email delivery routes through the backend (SendGrid) to the user's
+ * configured guardian email addresses.
  */
 
 import type { FusedResult } from './emotionApi';
 import { emailNotificationService } from './emailNotificationService';
 
-export type AlertTrigger = 'REPEATED_NEGATIVE' | 'HIGH_INTENSITY' | 'PROLONGED_DISTRESS';
+export type AlertTrigger = 'REPEATED_NEGATIVE' | 'HIGH_INTENSITY' | 'PROLONGED_DISTRESS'; // HIGH_INTENSITY and PROLONGED_DISTRESS kept for existing DB records
 export type AlertSeverity = 'warning' | 'critical';
 export type AlertStatus = 'pending' | 'sent' | 'failed' | 'dismissed';
 
@@ -43,16 +41,22 @@ export const NEGATIVE_EMOTIONS = new Set([
   'Sad', 'Anxious', 'Angry', 'Fearful', 'Disgusted', 'Distressed',
 ]);
 
+// All 7 emotions tracked for consecutive detection
+export const ALL_TRACKED_EMOTIONS = new Set([
+  'Happy', 'Sad', 'Angry', 'Fearful', 'Disgusted', 'Surprised', 'Neutral',
+  'Anxious', 'Distressed', // extended emotions
+]);
+
 const REPEATED_NEGATIVE_THRESHOLD = 3;
-const HIGH_INTENSITY_THRESHOLD = 80;
-const PROLONGED_WINDOW_MS = 30 * 60 * 1000;
-const PROLONGED_COUNT_THRESHOLD = 5;
 
 type AlertListener = (alert: GuardianAlert) => void;
+type EmailSentListener = (alert: GuardianAlert) => void;
 
 class GuardianAlertService {
   private listeners: Set<AlertListener> = new Set();
-  private consecutiveNegativeCount = 0;
+  private emailSentListeners: Set<EmailSentListener> = new Set();
+  private consecutiveSameEmotionCount = 0;
+  private lastPrimaryEmotion = '';
   private lastAlertTime: Record<AlertTrigger, number> = {
     REPEATED_NEGATIVE: 0,
     HIGH_INTENSITY: 0,
@@ -65,36 +69,19 @@ class GuardianAlertService {
   evaluate(result: FusedResult, sessionId: string, guardianEmails: string[]): GuardianAlert | null {
     if (guardianEmails.length === 0) return null;
 
-    const isNegative = NEGATIVE_EMOTIONS.has(result.emotion);
-
-    if (isNegative) {
-      this.consecutiveNegativeCount++;
+    // Track consecutive same emotion across ALL 7 emotions
+    if (result.emotion === this.lastPrimaryEmotion) {
+      this.consecutiveSameEmotionCount++;
     } else {
-      this.consecutiveNegativeCount = 0;
+      this.consecutiveSameEmotionCount = 1;
+      this.lastPrimaryEmotion = result.emotion;
     }
 
-    // HIGH_INTENSITY — most urgent, check first
-    if (isNegative && result.intensity > HIGH_INTENSITY_THRESHOLD) {
-      if (this.canFire('HIGH_INTENSITY')) {
-        return this.createAndSendAlert('HIGH_INTENSITY', 'critical', result, sessionId, guardianEmails);
-      }
-    }
-
-    // REPEATED_NEGATIVE
-    if (this.consecutiveNegativeCount >= REPEATED_NEGATIVE_THRESHOLD) {
+    // Fire alert when same emotion detected 3 times in a row
+    if (this.consecutiveSameEmotionCount >= REPEATED_NEGATIVE_THRESHOLD) {
       if (this.canFire('REPEATED_NEGATIVE')) {
-        this.consecutiveNegativeCount = 0;
+        this.consecutiveSameEmotionCount = 0;
         return this.createAndSendAlert('REPEATED_NEGATIVE', 'warning', result, sessionId, guardianEmails);
-      }
-    }
-
-    // PROLONGED_DISTRESS
-    if (isNegative) {
-      const recentNegativeCount = this.countRecentNegatives();
-      if (recentNegativeCount >= PROLONGED_COUNT_THRESHOLD) {
-        if (this.canFire('PROLONGED_DISTRESS')) {
-          return this.createAndSendAlert('PROLONGED_DISTRESS', 'critical', result, sessionId, guardianEmails);
-        }
       }
     }
 
@@ -104,6 +91,11 @@ class GuardianAlertService {
   onAlert(listener: AlertListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  onEmailSent(listener: EmailSentListener): () => void {
+    this.emailSentListeners.add(listener);
+    return () => this.emailSentListeners.delete(listener);
   }
 
   loadAlerts(): GuardianAlert[] {
@@ -190,12 +182,14 @@ class GuardianAlertService {
       if (result.success) {
         this.markSent(alert.id, result.messageId);
         if (result.simulated) {
-          // Mark as simulated in storage
           const alerts = this.loadAlerts().map((a) =>
             a.id === alert.id ? { ...a, simulated: true } : a
           );
           this.saveAlerts(alerts);
         }
+        // Notify email-sent listeners
+        const sentAlert = this.loadAlerts().find((a) => a.id === alert.id) || alert;
+        this.emailSentListeners.forEach((l) => l(sentAlert));
       } else {
         this.markFailed(alert.id, result.error);
       }
@@ -208,11 +202,11 @@ class GuardianAlertService {
   private buildMessage(trigger: AlertTrigger, result: FusedResult): string {
     switch (trigger) {
       case 'REPEATED_NEGATIVE':
-        return `${REPEATED_NEGATIVE_THRESHOLD} consecutive ${result.emotion.toLowerCase()} detections observed. User may need support.`;
+        return `${result.emotion} detected ${REPEATED_NEGATIVE_THRESHOLD} times in a row. Please check on the user.`;
       case 'HIGH_INTENSITY':
         return `High-intensity ${result.emotion.toLowerCase()} detected (${result.intensity}% intensity). Immediate attention may be needed.`;
       case 'PROLONGED_DISTRESS':
-        return `Prolonged distress pattern detected: ${PROLONGED_COUNT_THRESHOLD}+ negative emotions within 30 minutes.`;
+        return `Prolonged distress pattern detected. Please check on the user.`;
     }
   }
 

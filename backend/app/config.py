@@ -43,8 +43,11 @@ class Config:
     MODEL_DEVICE = os.getenv('MODEL_DEVICE', 'cpu')
     MODEL_PRECISION = os.getenv('MODEL_PRECISION', 'fp32')
     FACE_DETECTION_MODEL = os.getenv('FACE_DETECTION_MODEL', 'resnet50')
-    VOICE_EMOTION_MODEL = os.getenv('VOICE_EMOTION_MODEL', 'wav2vec2')
-    TEXT_EMOTION_MODEL = os.getenv('TEXT_EMOTION_MODEL', 'distilbert')
+    VOICE_EMOTION_MODEL = os.getenv('VOICE_EMOTION_MODEL', 'kvilla')
+    TEXT_EMOTION_MODEL = os.getenv('TEXT_EMOTION_MODEL', 'ollama')
+    OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+    OLLAMA_TEXT_MODEL = os.getenv('OLLAMA_TEXT_MODEL', 'llama3.1:8b')
+    OLLAMA_TIMEOUT_SECONDS = int(os.getenv('OLLAMA_TIMEOUT_SECONDS', 30))
     
     # Feature Flags
     ENABLE_EMOTION_FUSION = os.getenv('ENABLE_EMOTION_FUSION', 'true').lower() == 'true'

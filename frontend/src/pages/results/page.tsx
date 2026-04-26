@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { FusedResult, ModalityResult } from '@/services/emotionApi';
 import { fuseEmotions } from '@/services/emotionApi';
@@ -117,9 +117,47 @@ function generateRecommendations(emotion: string): string[] {
       'This is a balanced state — good for routine tasks.',
       'Consider what might bring more engagement or joy to your day.',
     ],
+    // canonical labels
+    angry: [
+      'Step away from the triggering situation temporarily.',
+      'Physical exercise can help release built-up tension.',
+      'Write down your feelings before responding to others.',
+    ],
+    disgusted: [
+      'Distance yourself from the source of disgust.',
+      'Practice mindful breathing to reset your senses.',
+      'Engage with something aesthetically pleasing to you.',
+    ],
+    fearful: [
+      'Identify the specific source of fear and assess its reality.',
+      'Ground yourself using the 5-4-3-2-1 sensory technique.',
+      'Talk to someone you trust about what you\'re experiencing.',
+    ],
+    happy: [
+      'Channel this energy into creative or collaborative work.',
+      'Share your positive mood — it\'s contagious and uplifting.',
+      'Journal this moment to reinforce emotional awareness.',
+    ],
+    neutral: [
+      'This is a balanced state — good for routine tasks.',
+      'Consider what might bring more engagement or joy to your day.',
+    ],
+    sad: [
+      'Reach out to a trusted friend or family member.',
+      'Engage in gentle physical activity like a walk.',
+      'Practice self-compassion — it\'s okay to feel this way.',
+    ],
+    surprised: [
+      'Pause and process what just happened before reacting.',
+      'Channel your surprise into curiosity and exploration.',
+      'Reflect on what this unexpected moment reveals.',
+    ],
   };
-  return map[emotion] || map.Neutral;
+  return map[emotion] || map.neutral;
 }
+
+interface VideoLink { title: string; url: string; }
+interface VideoRecs { goal: string; videos: VideoLink[]; }
 
 function generateFusionExplanation(fused: FusedResult): string {
   const { modalities, fusionWeights, emotion } = fused;
@@ -153,7 +191,27 @@ export default function ResultsPage() {
   const intensityColor = fused.intensityLabel === 'High' ? '#00D4AA' : fused.intensityLabel === 'Medium' ? '#F59E0B' : '#3B82F6';
   const insights = generateInsights(fused);
   const recommendations = generateRecommendations(fused.emotion);
+  const [videoRecs, setVideoRecs] = useState<VideoRecs | null>(null);
+  const [videoRecsLoading, setVideoRecsLoading] = useState(true);
   const fusionExplanation = generateFusionExplanation(fused);
+
+  useEffect(() => {
+    const emotion = fused.emotion.toLowerCase();
+    setVideoRecsLoading(true);
+    fetch('http://localhost:5000/api/emotion/youtube-suggestions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emotion }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.videos)) {
+          setVideoRecs({ goal: `${emotion} support`, videos: data.videos });
+        }
+      })
+      .catch(() => { /* silently fail — no fallback shown */ })
+      .finally(() => setVideoRecsLoading(false));
+  }, [fused.emotion]);
   const isRealData = !!locationState?.fused || !!locationState?.modalities;
   const emoji = emotionEmoji[fused.emotion] || '🧠';
   const reportDate = new Date(fused.timestamp).toLocaleString('en-US', {
@@ -607,12 +665,44 @@ export default function ResultsPage() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaved(true);
-    const history = JSON.parse(localStorage.getItem('empathAI_history') || '[]');
-    history.unshift({ ...fused, savedAt: Date.now() });
-    localStorage.setItem('empathAI_history', JSON.stringify(history.slice(0, 50)));
-    setTimeout(() => navigate('/history'), 1200);
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const modalitiesPayload: Record<string, unknown> = {};
+        fused.modalities.forEach((m) => {
+          modalitiesPayload[m.modality] = {
+            emotion: m.emotion,
+            confidence: m.confidence / 100,
+            scores: m.scores,
+          };
+        });
+        await fetch('http://localhost:5000/api/emotion/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            face_emotion: modalitiesPayload['face'] || null,
+            voice_emotion: modalitiesPayload['voice'] || null,
+            text_emotion: modalitiesPayload['text'] || null,
+            weights: fused.fusionWeights,
+            metadata: { saved_from: 'results_page', timestamp: fused.timestamp },
+          }),
+        });
+      } catch (err) {
+        console.error('Save to history failed:', err);
+      }
+    } else {
+      // No auth — persist to localStorage so history page can read it
+      try {
+        const existing: unknown[] = JSON.parse(localStorage.getItem('empathAI_history') || '[]');
+        existing.unshift({ ...fused, savedAt: Date.now() });
+        localStorage.setItem('empathAI_history', JSON.stringify(existing.slice(0, 50)));
+      } catch (err) {
+        console.error('localStorage save failed:', err);
+      }
+    }
+    setTimeout(() => navigate('/history'), 800);
   };
 
   return (
@@ -894,6 +984,41 @@ export default function ResultsPage() {
                 </li>
               ))}
             </ul>
+
+            {/* YouTube video suggestions */}
+            <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'rgba(255,0,0,0.15)' }}>
+                  <i className="ri-youtube-line text-xs" style={{ color: '#FF4444' }}></i>
+                </div>
+                <p className="text-white text-xs font-semibold">Watch to Help</p>
+                <span className="text-gray-500 text-xs ml-auto">AI-curated for you</span>
+              </div>
+              {videoRecsLoading ? (
+                <div className="flex items-center gap-2 py-3 text-gray-500 text-xs">
+                  <i className="ri-loader-4-line animate-spin"></i>
+                  Asking AI for suggestions…
+                </div>
+              ) : videoRecs && videoRecs.videos.length > 0 ? (
+                <div className="space-y-2">
+                  {videoRecs.videos.map((v, i) => (
+                    <a
+                      key={i}
+                      href={v.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition-all hover:opacity-80"
+                      style={{ background: 'rgba(255,68,68,0.06)', border: '1px solid rgba(255,68,68,0.12)', color: '#FCA5A5', textDecoration: 'none' }}
+                    >
+                      <i className="ri-play-circle-line text-sm flex-shrink-0" style={{ color: '#FF4444' }}></i>
+                      {v.title}
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-600 text-xs">Suggestions unavailable — Ollama may be offline.</p>
+              )}
+            </div>
           </div>
         </div>
 

@@ -7,6 +7,12 @@ from bson import ObjectId
 
 media_bp = Blueprint('media', __name__)
 
+from typing import cast
+from app import AppFlask
+
+def _app() -> AppFlask:
+    return cast(AppFlask, current_app._get_current_object())  # type: ignore[attr-defined]
+
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
 ALLOWED_AUDIO_EXTENSIONS = {'mp3', 'wav', 'flac', 'm4a', 'ogg'}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
@@ -30,7 +36,7 @@ def get_file_size(file_obj):
 def upload_image():
     """Upload image to Cloudinary"""
     try:
-        user_id = request.user_id
+        user_id = request.user_id  # type: ignore[attr-defined]
         
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -62,7 +68,7 @@ def upload_image():
             return jsonify({'error': result.get('error', 'Upload failed')}), 500
         
         # Create media record
-        db = current_app.db
+        db = _app().db
         media_data = {
             'type': 'image',
             'cloudinary_public_id': result['public_id'],
@@ -92,7 +98,7 @@ def upload_image():
 def upload_audio():
     """Upload audio to Cloudinary"""
     try:
-        user_id = request.user_id
+        user_id = request.user_id  # type: ignore[attr-defined]
         
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -124,7 +130,7 @@ def upload_audio():
             return jsonify({'error': result.get('error', 'Upload failed')}), 500
         
         # Create media record
-        db = current_app.db
+        db = _app().db
         media_data = {
             'type': 'audio',
             'cloudinary_public_id': result['public_id'],
@@ -154,11 +160,11 @@ def upload_audio():
 def list_media():
     """List user media"""
     try:
-        user_id = request.user_id
+        user_id = request.user_id  # type: ignore[attr-defined]
         limit = request.args.get('limit', 50, type=int)
         media_type = request.args.get('type')  # 'image' or 'audio'
         
-        db = current_app.db
+        db = _app().db
         media_list = Media.get_by_user_id(db, user_id, limit=limit)
         
         # Filter by type if specified
@@ -187,8 +193,8 @@ def list_media():
 def delete_media(media_id):
     """Delete media"""
     try:
-        user_id = request.user_id
-        db = current_app.db
+        user_id = request.user_id  # type: ignore[attr-defined]
+        db = _app().db
         
         try:
             media = db[Media.collection_name].find_one({'_id': ObjectId(media_id)})

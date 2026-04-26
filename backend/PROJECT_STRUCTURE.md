@@ -58,7 +58,9 @@ ml_models/
 │
 ├── voice/
 │   ├── __init__.py
-│   └── voice_emotion_bilstm.py   # BiLSTM for temporal voice emotion
+│   ├── voice_emotion_kvilla_superb.py  # Primary: Kvilla + SUPERB ER fusion
+│   ├── voice_emotion_enhanced.py       # Enhanced feature extractor
+│   └── voice_emotion_simple.py         # Librosa-based fallback
 │                                 # Extracts MFCC, delta, energy, ZCR
 │                                 # Includes attention mechanism
 │
@@ -91,7 +93,7 @@ ml_models/
 
 ### 3. ML Models
 - **Face**: CNN with cascade classifier + ResNet50
-- **Voice**: BiLSTM with MFCC feature extraction
+- **Voice**: Kvilla + SUPERB ER fusion (primary: Kvilla, 65% weight)
 - **Text**: HuggingFace DistilBERT transformer
 - **Manager**: Unified interface for all three models
 
@@ -167,7 +169,7 @@ SMTP_PORT=587
 # ML Models
 MODEL_DEVICE=cpu  # or cuda
 FACE_DETECTION_MODEL=resnet50
-VOICE_EMOTION_MODEL=wav2vec2
+VOICE_EMOTION_MODEL=kvilla
 TEXT_EMOTION_MODEL=distilbert
 
 # Features
@@ -232,7 +234,7 @@ MAX_EMOTION_HISTORY=200
 {
   "_id": ObjectId,
   "user_id": ObjectId,
-  "alert_type": "HIGH_INTENSITY",
+  "alert_type": "CONSECUTIVE_SAME_EMOTION",
   "severity": "critical",
   "emotion_data": { "emotion": "sad", "intensity": 92 },
   "guardian_emails": ["guardian@example.com"],
@@ -343,7 +345,7 @@ pytest tests/test_auth.py -v
 
 Complete production-ready Flask backend with:
 - 🔐 Secure authentication
-- 🧠 Advanced ML models (CNN, BiLSTM, Transformer)
+- 🧠 Advanced ML models (CNN, Kvilla+SUPERB Voice, Transformer)
 - 📊 MongoDB data persistence
 - 🖼️ Cloudinary media handling
 - 📨 Email notifications

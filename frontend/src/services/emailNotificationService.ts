@@ -9,18 +9,31 @@ export type EmailSendResult = {
   simulated?: boolean;
 };
 
+export type EmailConnectionTestResult = {
+  ok: boolean;
+  latencyMs?: number;
+  status?: number;
+  error?: string;
+};
+
+const BACKEND_EMAIL_URL = 'http://localhost:5000/api/alerts/send-email';
 const EMAIL_API_URL_KEY = 'empathai_email_api_url';
 const EMAIL_API_KEY_KEY = 'empathai_email_api_key';
-const USER_NAME_KEY = 'empathai_user_name';
 
 class EmailNotificationService {
+  /** Always configured — emails route through the backend (SendGrid) */
+  isConfigured(): boolean {
+    return true;
+  }
+
   getApiUrl(): string {
-    return localStorage.getItem(EMAIL_API_URL_KEY) || '';
+    return localStorage.getItem(EMAIL_API_URL_KEY) || BACKEND_EMAIL_URL;
   }
 
   setApiUrl(url: string): void {
-    if (url.trim()) {
-      localStorage.setItem(EMAIL_API_URL_KEY, url.trim());
+    const value = url.trim();
+    if (value) {
+      localStorage.setItem(EMAIL_API_URL_KEY, value);
     } else {
       localStorage.removeItem(EMAIL_API_URL_KEY);
     }
@@ -31,131 +44,87 @@ class EmailNotificationService {
   }
 
   setApiKey(key: string): void {
-    if (key.trim()) {
-      localStorage.setItem(EMAIL_API_KEY_KEY, key.trim());
+    const value = key.trim();
+    if (value) {
+      localStorage.setItem(EMAIL_API_KEY_KEY, value);
     } else {
       localStorage.removeItem(EMAIL_API_KEY_KEY);
     }
   }
 
-  getUserName(): string {
-    return localStorage.getItem(USER_NAME_KEY) || 'EmpathAI User';
-  }
-
-  setUserName(name: string): void {
-    if (name.trim()) {
-      localStorage.setItem(USER_NAME_KEY, name.trim());
-    } else {
-      localStorage.removeItem(USER_NAME_KEY);
+  async testConnection(): Promise<EmailConnectionTestResult> {
+    const url = this.getApiUrl();
+    if (!url) {
+      return { ok: false, error: 'Missing API URL' };
     }
-  }
 
-  isConfigured(): boolean {
-    return !!this.getApiUrl();
-  }
-
-  async sendGuardianAlert(alert: GuardianAlert, userName?: string): Promise<EmailSendResult> {
-    const apiUrl = this.getApiUrl();
     const apiKey = this.getApiKey();
-    const resolvedName = userName || this.getUserName();
-
-    if (!apiUrl) {
-      console.info('[EmailService] No API URL configured. Simulating email send for alert:', alert.id);
-      await this.simulateDelay();
-      return { success: true, simulated: true, messageId: `sim_${Date.now()}` };
-    }
-
-    const subject = this.buildSubject(alert, resolvedName);
-    const payload = {
-      to: alert.guardianEmails,
-      subject,
-      alertId: alert.id,
-      trigger: alert.trigger,
-      severity: alert.severity,
-      emotion: alert.emotion,
-      confidence: alert.confidence,
-      intensity: alert.intensity,
-      intensityLabel: alert.intensityLabel,
-      message: alert.message,
-      sessionId: alert.sessionId,
-      timestamp: alert.timestamp,
-      userName: resolvedName,
-    };
+    const start = performance.now();
 
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        headers['X-API-Key'] = apiKey;
-      }
-
-      const response = await fetch(apiUrl, {
+      const res = await fetch(url, {
         method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}`, 'X-API-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({ type: 'ping' }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        return { success: false, error: `HTTP ${response.status}: ${errorText}` };
-      }
-
-      const data = await response.json().catch(() => ({ success: true }));
-      return {
-        success: data.success !== false,
-        messageId: data.messageId,
-        error: data.error,
-      };
+      const latencyMs = Math.round(performance.now() - start);
+      // Consider auth/validation failures as reachable endpoint.
+      const ok = res.ok || [400, 401, 403, 404, 405].includes(res.status);
+      return { ok, latencyMs, status: res.status, error: ok ? undefined : `HTTP ${res.status}` };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Network error';
-      return { success: false, error: message };
-    }
-  }
-
-  async testConnection(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
-    const apiUrl = this.getApiUrl();
-    if (!apiUrl) return { ok: false, error: 'No API URL configured' };
-
-    const start = Date.now();
-    try {
-      const apiKey = this.getApiKey();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-        headers['X-API-Key'] = apiKey;
-      }
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ type: 'ping', timestamp: Date.now() }),
-        signal: AbortSignal.timeout(6000),
-      });
-
-      const latencyMs = Date.now() - start;
-      if (response.ok || response.status === 400) {
-        return { ok: true, latencyMs };
-      }
-      return { ok: false, error: `HTTP ${response.status}`, latencyMs };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Connection failed';
       return { ok: false, error: message };
     }
   }
 
-  private buildSubject(alert: GuardianAlert, userName: string): string {
-    const prefix = alert.severity === 'critical' ? '[URGENT]' : '[Alert]';
-    switch (alert.trigger) {
-      case 'HIGH_INTENSITY':
-        return `${prefix} EmpathAI: High-intensity ${alert.emotion} detected for ${userName}`;
-      case 'REPEATED_NEGATIVE':
-        return `${prefix} EmpathAI: Repeated negative emotions detected for ${userName}`;
-      case 'PROLONGED_DISTRESS':
-        return `${prefix} EmpathAI: Prolonged distress pattern for ${userName}`;
-      default:
-        return `${prefix} EmpathAI: Guardian Alert for ${userName}`;
+  async sendGuardianAlert(alert: GuardianAlert, userName?: string): Promise<EmailSendResult> {
+    const token = localStorage.getItem('token');
+    const resolvedName = userName || localStorage.getItem('empathai_user_name') || 'EmpathAI User';
+    const apiUrl = this.getApiUrl();
+    const apiKey = this.getApiKey();
+
+    if (!token) {
+      // Not logged in — simulate
+      await this.simulateDelay();
+      return { success: true, simulated: true, messageId: `sim_${Date.now()}` };
+    }
+
+    try {
+      const response = await fetch(apiUrl || BACKEND_EMAIL_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({
+          to: alert.guardianEmails,
+          emotion: alert.emotion,
+          severity: alert.severity,
+          trigger: alert.trigger,
+          confidence: alert.confidence,
+          intensity: alert.intensity,
+          intensityLabel: alert.intensityLabel,
+          message: alert.message,
+          timestamp: alert.timestamp,
+          userName: resolvedName,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({ success: false })) as { success?: boolean; messageId?: string; error?: string };
+
+      if (!response.ok || !data.success) {
+        return { success: false, error: data.error || `HTTP ${response.status}` };
+      }
+
+      return { success: true, messageId: data.messageId };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      return { success: false, error: message };
     }
   }
 

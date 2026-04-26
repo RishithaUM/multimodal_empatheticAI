@@ -1,49 +1,128 @@
 """
-Text Emotion Detection Model (Transformer)
-Uses HuggingFace Transformers for NLP-based emotion recognition
+Text Emotion Detection Model (Ollama)
+Uses Ollama for NLP-based emotion recognition with no fallback models.
 """
-import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+import json
+import logging
 import os
+from typing import Dict
 
+import requests
+
+logger = logging.getLogger(__name__)
 
 class TextEmotionTransformer:
-    """Text emotion detection using Transformers"""
+    """Text emotion detection using Ollama only."""
     
-    EMOTIONS = ['anger', 'disgust', 'fear', 'joy', 'neutral', 'sadness', 'surprise']
+    EMOTIONS = ['angry', 'disgusted', 'fearful', 'happy', 'neutral', 'sad', 'surprised']
     
     def __init__(self, model_name=None, device='cpu'):
-        """Initialize text emotion model"""
-        self.device = device if torch.cuda.is_available() else 'cpu'
-        self.model_name = model_name or 'distilbert-base-uncased-finetuned-emotion'
+        """Initialize text emotion model.
+
+        The `device` argument is accepted for compatibility with callers.
+        """
+        _ = device
+        self.model_name = model_name or os.getenv('OLLAMA_TEXT_MODEL', 'llama3.1:8b')
+        self.ollama_url = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+        self.timeout_seconds = int(os.getenv('OLLAMA_TIMEOUT_SECONDS', 30))
         self.emotion_labels = self.EMOTIONS
-        
+
         self._load_model()
-    
+
     def _load_model(self):
-        """Load Transformer model from HuggingFace"""
+        """Verify Ollama availability for the configured model."""
+        tags_url = f"{self.ollama_url.rstrip('/')}/api/tags"
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self.model = AutoModelForSequenceClassification.from_pretrained(
-                self.model_name
-            ).to(self.device)
-            self.model.eval()
-            
-            # Create pipeline for easier inference
-            self.pipeline = pipeline(
-                'text-classification',
-                model=self.model_name,
-                device=0 if torch.cuda.is_available() else -1
-            )
+            response = requests.get(tags_url, timeout=self.timeout_seconds)
+            response.raise_for_status()
+            models = [m.get('name', '') for m in response.json().get('models', [])]
+            if self.model_name not in models:
+                logger.warning(
+                    "Configured Ollama model '%s' not found in local Ollama tags. "
+                    "Text detection will fail until the model is pulled.",
+                    self.model_name,
+                )
+            else:
+                logger.info("Ollama text emotion model ready: %s", self.model_name)
         except Exception as e:
-            print(f"Error loading model {self.model_name}: {str(e)}")
-            # Fallback to simpler model
-            self.model_name = 'distilbert-base-uncased'
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self.model = AutoModelForSequenceClassification.from_pretrained(
-                self.model_name,
-                num_labels=len(self.EMOTIONS)
-            ).to(self.device)
+            logger.warning(
+                "Could not verify Ollama model availability at %s: %s",
+                tags_url,
+                str(e),
+            )
+
+    def _normalize_emotion(self, emotion: str) -> str:
+        normalized = (emotion or '').strip().lower()
+        if normalized in self.EMOTIONS:
+            return normalized
+
+        alias_map = {
+            # Legacy / LLM variant names → canonical
+            'anger':    'angry',
+            'joy':      'happy',
+            'happiness':'happy',
+            'fear':     'fearful',
+            'anxious':  'fearful',
+            'disgust':  'disgusted',
+            'sadness':  'sad',
+            'sorrow':   'sad',
+            'surprise': 'surprised',
+        }
+        return alias_map.get(normalized, 'neutral')
+
+    def _call_ollama(self, text: str, include_scores: bool) -> Dict:
+        prompt = (
+            "You are a precise emotion classifier. Classify the text into EXACTLY ONE of these seven emotions:\n"
+            "  angry     — hostility, frustration, rage, irritation, annoyance\n"
+            "  disgusted — revulsion, contempt, distaste, loathing\n"
+            "  fearful   — anxiety, worry, nervousness, dread, panic, stress, scared, anxious, uneasy\n"
+            "  happy     — happiness, excitement, love, gratitude, contentment, pleasure\n"
+            "  neutral   — factual, no strong emotion\n"
+            "  sad       — grief, depression, loneliness, hopelessness, sorrow, loss\n"
+            "  surprised — shock, astonishment, amazement, unexpected\n\n"
+            "IMPORTANT: 'anxious', 'worried', 'nervous', 'stressed', 'scared' = fearful, NOT sad.\n"
+            "IMPORTANT: 'sad', 'depressed', 'hopeless', 'lonely' = sad, NOT fearful.\n\n"
+            "Examples:\n"
+            "  'I feel very anxious today' -> fearful\n"
+            "  'I am so worried about my exam' -> fearful\n"
+            "  'I feel deeply sad and hopeless' -> sad\n"
+            "  'I am furious about this' -> angry\n"
+            "  'This is disgusting' -> disgusted\n"
+            "  'I am so happy!' -> happy\n"
+            "  'Wow, I did not expect that!' -> surprised\n\n"
+            "Return strict JSON only, no markdown, no explanation.\n"
+            "Required keys: emotion (string from the list above), confidence (float 0.0 to 1.0).\n"
+        )
+
+        if include_scores:
+            prompt += (
+                "Also include scores (object) with ALL seven keys "
+                "(angry, disgusted, fearful, happy, neutral, sad, surprised) "
+                "and probabilities as floats between 0 and 1 summing approximately to 1.\n"
+            )
+
+        prompt += f"\nText to classify: \"{text[:1000]}\""
+
+        payload = {
+            'model': self.model_name,
+            'prompt': prompt,
+            'stream': False,
+            'format': 'json',
+        }
+
+        response = requests.post(
+            f"{self.ollama_url.rstrip('/')}/api/generate",
+            json=payload,
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+
+        raw_response = response.json().get('response', '').strip()
+        if not raw_response:
+            raise ValueError('Empty response from Ollama')
+
+        return json.loads(raw_response)
+
     
     def detect_emotion(self, text):
         """
@@ -57,19 +136,14 @@ class TextEmotionTransformer:
                     'confidence': 0.0,
                     'error': 'Empty text'
                 }
-            
-            # Truncate very long texts
-            text = text[:512]
-            
-            # Using pipeline (simpler)
-            result = self.pipeline(text)
-            
-            emotion = result[0]['label']
-            confidence = result[0]['score']
-            
+
+            result = self._call_ollama(text, include_scores=False)
+            emotion = self._normalize_emotion(result.get('emotion', 'neutral'))
+            confidence = float(result.get('confidence', 0.0))
+
             return {
                 'emotion': emotion,
-                'confidence': confidence,
+                'confidence': max(0.0, min(1.0, confidence)),
                 'text_length': len(text.split())
             }
         except Exception as e:
@@ -91,30 +165,17 @@ class TextEmotionTransformer:
                     'all_scores': {},
                     'error': 'Empty text'
                 }
-            
-            # Tokenize
-            text = text[:512]
-            inputs = self.tokenizer(text, return_tensors='pt', padding=True).to(self.device)
-            
-            # Inference
-            with torch.no_grad():
-                logits = self.model(**inputs).logits
-                probabilities = torch.nn.functional.softmax(logits, dim=1)
-                confidence, predicted = torch.max(probabilities, 1)
-            
-            emotion_idx = predicted.item()
-            emotion = self.emotion_labels[emotion_idx] if emotion_idx < len(self.emotion_labels) else 'neutral'
-            confidence = confidence.item()
-            
-            # Get all emotion scores
-            all_scores = {
-                self.emotion_labels[i]: float(probabilities[0, i].item())
-                for i in range(min(len(self.emotion_labels), probabilities.shape[1]))
-            }
-            
+
+            result = self._call_ollama(text, include_scores=True)
+            emotion = self._normalize_emotion(result.get('emotion', 'neutral'))
+            confidence = float(result.get('confidence', 0.0))
+
+            incoming_scores = result.get('scores', {}) or {}
+            all_scores = {label: float(incoming_scores.get(label, 0.0)) for label in self.EMOTIONS}
+
             return {
                 'emotion': emotion,
-                'confidence': confidence,
+                'confidence': max(0.0, min(1.0, confidence)),
                 'all_scores': all_scores,
                 'text_length': len(text.split())
             }
@@ -126,64 +187,4 @@ class TextEmotionTransformer:
                 'error': str(e)
             }
     
-    def analyze_sentiment_polarity(self, text):
-        """
-        Analyze sentiment polarity (positive/negative/neutral)
-        """
-        try:
-            result = self.detect_emotion(text)
-            
-            # Map emotions to polarity
-            positive = ['joy', 'surprise']
-            negative = ['anger', 'disgust', 'fear', 'sadness']
-            
-            emotion = result['emotion'].lower()
-            
-            if emotion in positive:
-                polarity = 'positive'
-            elif emotion in negative:
-                polarity = 'negative'
-            else:
-                polarity = 'neutral'
-            
-            return {
-                'emotion': result['emotion'],
-                'confidence': result['confidence'],
-                'polarity': polarity
-            }
-        except Exception as e:
-            return {
-                'emotion': 'neutral',
-                'confidence': 0.0,
-                'polarity': 'neutral',
-                'error': str(e)
-            }
-    
-    def extract_keywords(self, text):
-        """
-        Extract emotion keywords from text
-        """
-        try:
-            emotion_keywords = {
-                'joy': ['happy', 'love', 'great', 'wonderful', 'amazing', 'excellent'],
-                'sadness': ['sad', 'unhappy', 'depressed', 'down', 'miserable', 'cry'],
-                'anger': ['angry', 'mad', 'furious', 'hate', 'rage', 'upset'],
-                'fear': ['afraid', 'scared', 'terrified', 'anxious', 'worried', 'nervous'],
-                'disgust': ['disgusting', 'gross', 'hate', 'repulsive', 'vile', 'awful'],
-                'surprise': ['wow', 'amazing', 'unexpected', 'shocked', 'astonished'],
-                'neutral': ['ok', 'fine', 'normal', 'regular', 'average']
-            }
-            
-            text_lower = text.lower()
-            found_keywords = {}
-            
-            for emotion, keywords in emotion_keywords.items():
-                for keyword in keywords:
-                    if keyword in text_lower:
-                        if emotion not in found_keywords:
-                            found_keywords[emotion] = []
-                        found_keywords[emotion].append(keyword)
-            
-            return found_keywords
-        except Exception as e:
-            return {'error': str(e)}
+

@@ -210,8 +210,6 @@ export function useEmotionStream(): UseEmotionStreamReturn {
       statusRef.current = 'idle';
       setStatus('idle');
     }
-
-    console.log('⛔ Emotion stream stopped');
   }, []);
 
   // Cleanup on unmount

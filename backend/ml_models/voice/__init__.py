@@ -1,3 +1,3 @@
-from .voice_emotion_bilstm import VoiceEmotionBiLSTM, BiLSTMEmotionModel
+from .voice_emotion_simple import VoiceEmotionSimple
 
-__all__ = ['VoiceEmotionBiLSTM', 'BiLSTMEmotionModel']
+__all__ = ['VoiceEmotionSimple']

@@ -5,14 +5,28 @@ from bson import ObjectId
 
 settings_bp = Blueprint('settings', __name__)
 
+from typing import cast
+from app import AppFlask
+
+def _app() -> AppFlask:
+    return cast(AppFlask, current_app._get_current_object())  # type: ignore[attr-defined]
+
+
+@settings_bp.after_request
+def add_cors(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    return response
+
 
 @settings_bp.route('/', methods=['GET'])
 @token_required
 def get_settings():
     """Get user settings"""
     try:
-        user_id = request.user_id
-        db = current_app.db
+        user_id = request.user_id  # type: ignore[attr-defined]
+        db = _app().db
         
         settings = UserSettings.get_by_user_id(db, user_id)
         
@@ -36,9 +50,9 @@ def get_settings():
 def update_settings():
     """Update user settings"""
     try:
-        user_id = request.user_id
+        user_id = request.user_id  # type: ignore[attr-defined]
         data = request.get_json()
-        db = current_app.db
+        db = _app().db
         
         # Validate permission
         settings = UserSettings.get_by_user_id(db, user_id)
@@ -74,8 +88,8 @@ def update_settings():
 def get_guardian_emails():
     """Get guardian emails"""
     try:
-        user_id = request.user_id
-        db = current_app.db
+        user_id = request.user_id  # type: ignore[attr-defined]
+        db = _app().db
         
         settings = UserSettings.get_by_user_id(db, user_id)
         if not settings:
@@ -95,10 +109,10 @@ def get_guardian_emails():
 def add_guardian_email():
     """Add guardian email"""
     try:
-        user_id = request.user_id
+        user_id = request.user_id  # type: ignore[attr-defined]
         data = request.get_json()
         email = data.get('email', '').lower()
-        db = current_app.db
+        db = _app().db
         
         if not email:
             return jsonify({'error': 'Email is required'}), 400
@@ -130,9 +144,9 @@ def add_guardian_email():
 def remove_guardian_email(email):
     """Remove guardian email"""
     try:
-        user_id = request.user_id
+        user_id = request.user_id  # type: ignore[attr-defined]
         email = email.lower()
-        db = current_app.db
+        db = _app().db
         
         settings = UserSettings.get_by_user_id(db, user_id)
         if not settings:
@@ -192,16 +206,20 @@ def test_email():
         
         # Send test email
         from app.services import EmailNotificationService
-        user_id = request.user_id
-        db = current_app.db
+        user_id = request.user_id  # type: ignore[attr-defined]
+        db = _app().db
         user = User.get_by_id(db, user_id)
         
         result = EmailNotificationService.send_guardian_alert(
             [email],
             user.get('username', 'User'),
-            'Test Emotion',
+            'Anxious',
             'warning',
-            'TEST_ALERT'
+            'REPEATED_NEGATIVE',
+            confidence=79,
+            intensity=62,
+            message='This is a test alert from EmpathAI. Your guardian alert system is working correctly.',
+            timestamp=None,
         )
         
         return jsonify({

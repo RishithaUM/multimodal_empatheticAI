@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { historyData, emotionColors } from '@/mocks/emotions';
+
+const emotionColors: Record<string, string> = {
+  Happy: '#00D4AA', Sad: '#6C63FF', Anxious: '#F59E0B', Angry: '#EF4444',
+  Neutral: '#94A3B8', Excited: '#EC4899', Calm: '#3B82F6', Fearful: '#8B5CF6',
+  Disgusted: '#10B981', Surprised: '#F97316',
+};
 import { downloadEmotionPDF, buildFusedFromHistoryRow } from '@/services/pdfReportService';
+
+const BACKEND = 'http://localhost:5000';
 
 const intensityColors: Record<string, string> = {
   High: '#00D4AA',
@@ -9,27 +16,128 @@ const intensityColors: Record<string, string> = {
   Low: '#3B82F6',
 };
 
+interface HistoryRow {
+  id: string;
+  date: string;
+  time: string;
+  inputs: string[];
+  emotion: string;
+  confidence: number;
+  intensity: string;
+  raw: Record<string, unknown>;
+}
+
+function parseRecord(r: Record<string, unknown>): HistoryRow {
+  const createdAt = new Date((r.created_at as string) || Date.now());
+  const date = createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = createdAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  const modalities = (r.modalities as Record<string, unknown>) || {};
+  const inputs = Object.keys(modalities).filter((k) => modalities[k]).map((k) => k.charAt(0).toUpperCase() + k.slice(1));
+
+  const intensityLabel = (r.intensity_label as string) ||
+    ((r.confidence as number) >= 80 ? 'High' : (r.confidence as number) >= 60 ? 'Medium' : 'Low');
+
+  return {
+    id: r._id as string,
+    date,
+    time,
+    inputs: inputs.length ? inputs : ['Text'],
+    emotion: ((r.emotion as string) || 'neutral').charAt(0).toUpperCase() + ((r.emotion as string) || 'neutral').slice(1),
+    confidence: Math.round((r.confidence as number) * (((r.confidence as number) <= 1) ? 100 : 1)),
+    intensity: intensityLabel,
+    raw: r,
+  };
+}
+
 export default function HistoryPage() {
   const navigate = useNavigate();
+  const [rows, setRows] = useState<HistoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterEmotion, setFilterEmotion] = useState('All');
-  const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  const emotions = ['All', ...Array.from(new Set(historyData.map((d) => d.emotion)))];
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch(`${BACKEND}/api/emotion/history?limit=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.history)) {
+            setRows(data.history.map(parseRecord));
+          }
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    } else {
+      // No auth — read from localStorage
+      try {
+        const local: unknown[] = JSON.parse(localStorage.getItem('empathAI_history') || '[]');
+        const mapped = local.map((item, i) => {
+          const r = item as Record<string, unknown>;
+          const savedAt = new Date((r.savedAt as number) || (r.timestamp as string) || Date.now());
+          const date = savedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          const time = savedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          const modalities = (r.modalities as Array<Record<string, unknown>>) || [];
+          const inputs = modalities.map((m) => {
+            const mod = String(m.modality || '');
+            return mod.charAt(0).toUpperCase() + mod.slice(1);
+          });
+          const confidence = Number(r.confidence) || 0;
+          const intensity = (r.intensityLabel as string) ||
+            (confidence >= 80 ? 'High' : confidence >= 60 ? 'Medium' : 'Low');
+          const emotion = String(r.emotion || 'neutral');
+          return {
+            id: String(r._id || r.id || i),
+            date,
+            time,
+            inputs: inputs.length ? inputs : ['Text'],
+            emotion: emotion.charAt(0).toUpperCase() + emotion.slice(1),
+            confidence: Math.round(confidence <= 1 ? confidence * 100 : confidence),
+            intensity,
+            raw: r,
+          } as HistoryRow;
+        });
+        setRows(mapped);
+      } catch { /* ignore parse errors */ }
+      setLoading(false);
+    }
+  }, []);
 
-  const filtered = historyData.filter((d) => {
-    if (deletedIds.includes(d.id)) return false;
+  const emotions = ['All', ...Array.from(new Set(rows.map((d) => d.emotion)))];
+
+  const filtered = rows.filter((d) => {
     const matchSearch = d.emotion.toLowerCase().includes(search.toLowerCase()) || d.date.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filterEmotion === 'All' || d.emotion === filterEmotion;
     return matchSearch && matchFilter;
   });
 
-  const handleDelete = (id: string) => {
-    setDeletedIds((prev) => [...prev, id]);
+  const handleDelete = async (id: string) => {
+    const token = localStorage.getItem('token');
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    if (!token) {
+      // Remove from localStorage
+      try {
+        const local: unknown[] = JSON.parse(localStorage.getItem('empathAI_history') || '[]');
+        const updated = local.filter((_, i) => String(i) !== id && ((_ as Record<string,unknown>)._id || (_ as Record<string,unknown>).id) !== id);
+        localStorage.setItem('empathAI_history', JSON.stringify(updated));
+      } catch { /* ignore */ }
+      return;
+    }
+    try {
+      await fetch(`${BACKEND}/api/emotion/record/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token || ''}` },
+      });
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
   };
 
-  const handleDownload = async (row: typeof historyData[number]) => {
+  const handleDownload = async (row: HistoryRow) => {
     if (downloadingId) return;
     setDownloadingId(row.id);
     try {
@@ -42,13 +150,25 @@ export default function HistoryPage() {
     }
   };
 
+  const handleView = (row: HistoryRow) => {
+    navigate('/results', { state: { fused: {
+      emotion: row.emotion,
+      confidence: row.confidence,
+      intensity: row.intensity === 'High' ? 80 : row.intensity === 'Medium' ? 55 : 30,
+      intensityLabel: row.intensity,
+      modalities: row.inputs.map((inp) => ({ modality: inp.toLowerCase(), emotion: row.emotion, confidence: row.confidence, scores: [] })),
+      fusionWeights: Object.fromEntries(row.inputs.map((inp) => [inp.toLowerCase(), Math.floor(100 / row.inputs.length)])),
+      timestamp: (row.raw.created_at as string) || new Date().toISOString(),
+    }}});
+  };
+
   return (
     <div className="min-h-screen p-6 lg:p-8" style={{ background: '#07070E' }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Sora, sans-serif' }}>History</h1>
-          <p className="text-gray-400 text-sm mt-1">{filtered.length} past analyses</p>
+          <p className="text-gray-400 text-sm mt-1">{loading ? 'Loading…' : `${filtered.length} past analyses`}</p>
         </div>
         <button
           onClick={() => navigate('/analyze')}
@@ -67,7 +187,6 @@ export default function HistoryPage() {
         className="p-4 rounded-2xl mb-6 flex flex-col sm:flex-row gap-4"
         style={{ background: '#13131A', border: '1px solid rgba(255,255,255,0.06)' }}
       >
-        {/* Search */}
         <div className="relative flex-1">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center">
             <i className="ri-search-line text-gray-500 text-sm"></i>
@@ -83,8 +202,6 @@ export default function HistoryPage() {
             onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.08)')}
           />
         </div>
-
-        {/* Emotion Filter */}
         <div className="flex gap-2 flex-wrap">
           {emotions.map((e) => (
             <button
@@ -108,7 +225,6 @@ export default function HistoryPage() {
         className="rounded-2xl overflow-hidden"
         style={{ background: '#13131A', border: '1px solid rgba(255,255,255,0.06)' }}
       >
-        {/* Table Header */}
         <div
           className="grid grid-cols-6 gap-4 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
@@ -120,8 +236,12 @@ export default function HistoryPage() {
           <span>Actions</span>
         </div>
 
-        {/* Table Rows */}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="py-16 text-center">
+            <i className="ri-loader-4-line text-3xl text-gray-600 animate-spin"></i>
+            <p className="text-gray-500 text-sm mt-3">Loading history…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="py-16 text-center">
             <div className="w-12 h-12 flex items-center justify-center mx-auto mb-3">
               <i className="ri-history-line text-3xl text-gray-600"></i>
@@ -163,16 +283,11 @@ export default function HistoryPage() {
                 </div>
                 <div>
                   <p className="text-white text-sm font-semibold">{row.confidence}%</p>
-                  <span
-                    className="text-xs"
-                    style={{ color: intensityColor }}
-                  >
-                    {row.intensity}
-                  </span>
+                  <span className="text-xs" style={{ color: intensityColor }}>{row.intensity}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => navigate('/results')}
+                    onClick={() => handleView(row)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer transition-all hover:bg-white/10"
                     title="View Report"
                     style={{ color: '#6C63FF' }}
@@ -209,3 +324,5 @@ export default function HistoryPage() {
     </div>
   );
 }
+
+
