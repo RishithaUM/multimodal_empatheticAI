@@ -66,15 +66,7 @@ export default function LandingFooter() {
                   How It Works
                 </a>
               </li>
-              <li>
-                <a
-                  href="#features"
-                  onClick={(e) => { e.preventDefault(); scrollTo('features'); }}
-                  className="text-gray-400 hover:text-white text-sm transition-colors cursor-pointer"
-                >
-                  Pricing
-                </a>
-              </li>
+
               <li>
                 <a
                   href="#about"

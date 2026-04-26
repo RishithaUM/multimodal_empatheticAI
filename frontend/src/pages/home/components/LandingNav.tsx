@@ -1,10 +1,36 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_BASE = 'http://localhost:5000';
+
 export default function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+
+  const handleStartFree = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/register');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        navigate('/analyze');
+        return;
+      }
+    } catch {
+      // If auth check fails, treat user as logged out.
+    }
+
+    localStorage.removeItem('token');
+    navigate('/register');
+  };
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 40);
@@ -53,7 +79,7 @@ export default function LandingNav() {
             Login
           </button>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={handleStartFree}
             className="px-5 py-2 rounded-full text-sm font-semibold text-white cursor-pointer whitespace-nowrap transition-all hover:opacity-90"
             style={{ background: 'linear-gradient(135deg, #6C63FF, #8B5CF6)' }}
           >
@@ -73,7 +99,7 @@ export default function LandingNav() {
       {/* Mobile Menu */}
       {mobileOpen && (
         <div className="md:hidden px-6 pb-6 flex flex-col gap-4" style={{ background: '#0D0D14' }}>
-          {['Features', 'How It Works', 'Pricing'].map((item) => (
+          {['Features', 'How It Works'].map((item) => (
             <a
               key={item}
               href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
@@ -90,7 +116,7 @@ export default function LandingNav() {
             Login
           </button>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={handleStartFree}
             className="w-full py-2.5 rounded-full text-sm font-semibold text-white cursor-pointer whitespace-nowrap"
             style={{ background: 'linear-gradient(135deg, #6C63FF, #8B5CF6)' }}
           >

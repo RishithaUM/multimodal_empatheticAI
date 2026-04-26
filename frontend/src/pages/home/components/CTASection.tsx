@@ -8,14 +8,11 @@ export default function CTASection() {
       className="relative py-32 px-6 overflow-hidden"
       style={{ background: '#0F0F18' }}
     >
-      {/* Background image */}
-      <div className="absolute inset-0">
-        <img
-          src="https://readdy.ai/api/search-image?query=abstract%20dark%20neural%20network%20brain%20waves%20glowing%20purple%20teal%20particles%20flowing%20energy%20digital%20art%20cinematic%20atmospheric%20deep%20space%20background%20minimal&width=1440&height=600&seq=cta-bg-1&orientation=landscape"
-          alt=""
-          className="w-full h-full object-cover object-top opacity-20"
-        />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, #0F0F18 30%, rgba(15,15,24,0.7) 70%, #0F0F18)' }}></div>
+      {/* Background gradient */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div style={{ background: 'radial-gradient(ellipse 70% 60% at 20% 50%, rgba(108,99,255,0.15) 0%, transparent 60%)' }} className="absolute inset-0" />
+        <div style={{ background: 'radial-gradient(ellipse 50% 40% at 80% 60%, rgba(0,212,170,0.1) 0%, transparent 60%)' }} className="absolute inset-0" />
+        <div style={{ background: 'radial-gradient(ellipse 40% 40% at 50% 0%, rgba(236,72,153,0.05) 0%, transparent 60%)' }} className="absolute inset-0" />
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-12">
@@ -36,7 +33,7 @@ export default function CTASection() {
         <div className="flex flex-col items-center lg:items-end gap-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/analyze')}
               className="flex items-center gap-3 px-8 py-4 rounded-full text-base font-semibold cursor-pointer whitespace-nowrap transition-all hover:opacity-90 hover:scale-105"
               style={{ background: 'white', color: '#07070E' }}
             >

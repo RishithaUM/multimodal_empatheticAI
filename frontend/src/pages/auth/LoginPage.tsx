@@ -168,14 +168,14 @@ export default function LoginPage() {
           </form>
 
           {/* Divider */}
-          <div className="flex items-center gap-4 my-6">
+          {/* <div className="flex items-center gap-4 my-6">
             <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }}></div>
             <span className="text-gray-600 text-xs">or continue with</span>
             <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }}></div>
-          </div>
+          </div> */}
 
           {/* Social */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* <div className="grid grid-cols-2 gap-3">
             {[
               { icon: 'ri-google-line', label: 'Google' },
               { icon: 'ri-github-line', label: 'GitHub' },
@@ -191,7 +191,7 @@ export default function LoginPage() {
                 {s.label}
               </button>
             ))}
-          </div>
+          </div> */}
         </div>
 
         {/* Register link */}

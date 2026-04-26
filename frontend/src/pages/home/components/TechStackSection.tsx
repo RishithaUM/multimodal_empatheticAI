@@ -4,28 +4,28 @@ const techStack = [
   {
     category: 'AI & ML',
     items: [
-      { name: 'TensorFlow', icon: 'ri-brain-line', desc: 'Deep learning emotion models' },
-      { name: 'PyTorch', icon: 'ri-cpu-line', desc: 'Neural network training' },
-      { name: 'OpenCV', icon: 'ri-eye-line', desc: 'Real-time face detection' },
-      { name: 'Hugging Face', icon: 'ri-emotion-line', desc: 'NLP sentiment analysis' },
+      { name: 'PyTorch', icon: 'ri-cpu-line', desc: 'ResNet50 CNN + wav2vec2 models' },
+      { name: 'wav2vec2', icon: 'ri-sound-module-line', desc: 'Voice emotion Transformer (Kvilla + SUPERB)' },
+      { name: 'OpenCV', icon: 'ri-eye-line', desc: 'Haar Cascade face detection' },
+      { name: 'Ollama LLM', icon: 'ri-brain-line', desc: 'llama3.1:8b text emotion analysis' },
     ],
   },
   {
     category: 'Frontend',
     items: [
-      { name: 'React 19', icon: 'ri-reactjs-line', desc: 'Modern UI framework' },
-      { name: 'TypeScript', icon: 'ri-code-s-slash-line', desc: 'Type-safe development' },
+      { name: 'React 19', icon: 'ri-reactjs-line', desc: 'Modern UI with TypeScript' },
+      { name: 'TypeScript', icon: 'ri-code-s-slash-line', desc: 'Fully typed codebase' },
       { name: 'TailwindCSS', icon: 'ri-paint-brush-line', desc: 'Utility-first styling' },
-      { name: 'WebRTC', icon: 'ri-video-line', desc: 'Real-time media streaming' },
+      { name: 'Socket.IO', icon: 'ri-exchange-line', desc: 'Real-time WebSocket client' },
     ],
   },
   {
     category: 'Backend',
     items: [
-      { name: 'Python FastAPI', icon: 'ri-server-line', desc: 'High-performance API' },
-      { name: 'WebSocket', icon: 'ri-exchange-line', desc: 'Real-time data pipeline' },
-      { name: 'PostgreSQL', icon: 'ri-database-2-line', desc: 'Emotion data storage' },
-      { name: 'Redis', icon: 'ri-flashlight-line', desc: 'Session & cache layer' },
+      { name: 'Python Flask', icon: 'ri-server-line', desc: 'REST API + ML model serving' },
+      { name: 'MongoDB Atlas', icon: 'ri-database-2-line', desc: 'Cloud document database' },
+      { name: 'SendGrid', icon: 'ri-mail-send-line', desc: 'Guardian alert emails' },
+      { name: 'JWT + bcrypt', icon: 'ri-shield-keyhole-line', desc: 'Auth & password hashing' },
     ],
   },
 ];
@@ -34,38 +34,38 @@ const workflowSteps = [
   {
     step: 1,
     title: 'Multimodal Input',
-    desc: 'Capture face, voice, and text simultaneously through browser APIs',
+    desc: 'Upload a face image, record voice audio, and type text — all in one session',
     icon: 'ri-camera-lens-line',
     color: '#6C63FF',
   },
   {
     step: 2,
-    title: 'Real-time Processing',
-    desc: 'Stream data via WebSocket to AI models for instant analysis',
+    title: 'Parallel AI Models',
+    desc: 'ResNet50 CNN for face, wav2vec2 Transformer for voice, Ollama LLM for text',
     icon: 'ri-broadcast-line',
     color: '#00D4AA',
   },
   {
     step: 3,
-    title: 'Emotion Fusion',
-    desc: 'Combine face, voice, and text signals into unified emotion scores',
+    title: 'Weighted Fusion',
+    desc: 'Confidence-weighted fusion combines all three signals into a final emotion label',
     icon: 'ri-git-merge-line',
     color: '#EC4899',
   },
   {
     step: 4,
-    title: 'Smart Response',
-    desc: 'AI assistant adapts responses based on detected emotional state',
-    icon: 'ri-message-3-line',
+    title: 'History & Alerts',
+    desc: 'Results are stored in MongoDB. Guardian alerts auto-fire on distress patterns',
+    icon: 'ri-shield-user-line',
     color: '#F59E0B',
   },
 ];
 
 const systemStats = [
-  { label: 'Emotions Detected', value: '8', suffix: '', desc: 'Core emotional states' },
-  { label: 'Analysis Speed', value: '<100', suffix: 'ms', desc: 'Real-time latency' },
+  { label: 'Emotions Detected', value: '7', suffix: '', desc: 'Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral' },
+  { label: 'Analysis Speed', value: '<2', suffix: 's', desc: 'Per-session fusion result' },
   { label: 'Modalities', value: '3', suffix: '', desc: 'Face + Voice + Text' },
-  { label: 'Accuracy Rate', value: '94', suffix: '%', desc: 'On validation dataset' },
+  { label: 'Voice Accuracy', value: '85', suffix: '%', desc: 'wav2vec2 Transformer model' },
 ];
 
 export default function TechStackSection() {

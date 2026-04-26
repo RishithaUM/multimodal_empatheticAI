@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 
+const API_BASE = 'http://localhost:5000';
+
 const featurePills = [
   { icon: 'ri-camera-line', label: 'Face Detection' },
   { icon: 'ri-mic-line', label: 'Voice Analysis' },
@@ -12,6 +14,30 @@ const waveHeights = [8, 16, 24, 32, 24, 16, 8, 20, 28, 20, 12, 28, 16, 24, 12];
 
 export default function HeroSection() {
   const navigate = useNavigate();
+
+  const handleStartSession = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/register');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        navigate('/analyze');
+        return;
+      }
+    } catch {
+      // If auth check fails, treat user as logged out.
+    }
+
+    localStorage.removeItem('token');
+    navigate('/register');
+  };
 
   return (
     <section
@@ -60,7 +86,7 @@ export default function HeroSection() {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-14">
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={handleStartSession}
               className="px-8 py-4 rounded-full text-base font-semibold text-white cursor-pointer whitespace-nowrap transition-all hover:opacity-90 hover:scale-105"
               style={{ background: 'linear-gradient(135deg, #6C63FF, #8B5CF6)', boxShadow: '0 8px 32px rgba(108,99,255,0.35)' }}
             >
