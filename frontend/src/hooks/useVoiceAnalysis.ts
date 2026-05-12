@@ -16,6 +16,8 @@ export interface UseVoiceAnalysisReturn {
 }
 
 const WAVEFORM_BARS = 20;
+const MAX_AUDIO_SECONDS = 8;
+const TARGET_SAMPLE_RATE = 16000;
 
 /**
  * Convert Float32 PCM audio to WAV format
@@ -63,6 +65,36 @@ async function encodeWAV(pcmData: Float32Array, sampleRate: number): Promise<Arr
   }
 
   return arrayBuffer;
+}
+
+/**
+ * Downsample mono PCM audio to a target sample rate to reduce payload size.
+ */
+function downsamplePCM(input: Float32Array, inputSampleRate: number, targetSampleRate: number): Float32Array {
+  if (targetSampleRate >= inputSampleRate) return input;
+
+  const ratio = inputSampleRate / targetSampleRate;
+  const newLength = Math.max(1, Math.floor(input.length / ratio));
+  const output = new Float32Array(newLength);
+
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+  while (offsetResult < output.length) {
+    const nextOffsetBuffer = Math.min(input.length, Math.round((offsetResult + 1) * ratio));
+    let accum = 0;
+    let count = 0;
+
+    for (let i = offsetBuffer; i < nextOffsetBuffer; i++) {
+      accum += input[i];
+      count += 1;
+    }
+
+    output[offsetResult] = count > 0 ? accum / count : 0;
+    offsetResult += 1;
+    offsetBuffer = nextOffsetBuffer;
+  }
+
+  return output;
 }
 
 /**
@@ -126,6 +158,10 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
   const [waveformData, setWaveformData] = useState<number[]>(Array(WAVEFORM_BARS).fill(4));
   const [audioAnalysis, setAudioAnalysis] = useState<VoiceAnalysisResult | null>(null);
   const [lastResult, setLastResult] = useState<ModalityResult | null>(null);
+  const useTestEndpoint = import.meta.env.DEV;
+  const backendBaseUrl = import.meta.env.DEV
+    ? (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000')
+    : '';
 
   const animateWaveform = useCallback(() => {
     if (!analyserRef.current) return;
@@ -226,15 +262,26 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
           const decoded = await audioCtx.decodeAudioData(decodeBuffer);
           const channelData = decoded.getChannelData(0);
 
+          // Bound clip length so payload size and backend inference stay stable.
+          const maxSamples = Math.floor(decoded.sampleRate * MAX_AUDIO_SECONDS);
+          const clippedData = channelData.length > maxSamples
+            ? channelData.slice(0, maxSamples)
+            : channelData;
+
+          const processedData = downsamplePCM(clippedData, decoded.sampleRate, TARGET_SAMPLE_RATE);
+
           // Convert Float32Array PCM to WAV bytes, then base64 safely.
-          const wavBuffer = await encodeWAV(channelData, decoded.sampleRate);
+          const wavBuffer = await encodeWAV(processedData, TARGET_SAMPLE_RATE);
           const base64Audio = await arrayBufferToBase64(wavBuffer);
 
           console.log('[Voice] Sending audio to backend for voice emotion analysis...');
 
           // Send to backend API
           const token = getUsableAuthToken();
-          const endpoint = token ? '/api/emotion/detect/voice' : '/api/emotion/detect/voice/test';
+          const endpointPath = useTestEndpoint
+            ? '/api/emotion/detect/voice/test'
+            : (token ? '/api/emotion/detect/voice' : '/api/emotion/detect/voice/test');
+          const endpoint = `${backendBaseUrl}${endpointPath}`;
           let response = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -249,7 +296,7 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
           // If token expired/invalid, clear it and retry once on test endpoint.
           if (response.status === 401 && token) {
             localStorage.removeItem('token');
-            response = await fetch('/api/emotion/detect/voice/test', {
+            response = await fetch(`${backendBaseUrl}/api/emotion/detect/voice/test`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -261,11 +308,24 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
           }
 
           if (!response.ok) {
-            const error = await response.json();
+            const raw = await response.text();
+            let errorMessage = `Backend voice analysis failed (HTTP ${response.status})`;
+
+            try {
+              const parsed = raw ? JSON.parse(raw) : null;
+              if (parsed?.error) {
+                errorMessage = parsed.error;
+              }
+            } catch {
+              if (raw && raw.trim().length > 0) {
+                errorMessage = `${errorMessage}: ${raw.slice(0, 180)}`;
+              }
+            }
+
             if (response.status === 401) {
               throw new Error('Session expired. Please log in again.');
             }
-            throw new Error(error.error || 'Backend voice analysis failed');
+            throw new Error(errorMessage);
           }
 
           const backendResult = await response.json();
@@ -300,7 +360,7 @@ export function useVoiceAnalysis(): UseVoiceAnalysisReturn {
 
       recorder.stop();
     });
-  }, [voiceStatus]);
+  }, [backendBaseUrl, voiceStatus, useTestEndpoint]);
 
   const resetVoice = useCallback(() => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);

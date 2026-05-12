@@ -46,7 +46,7 @@ class Config:
     VOICE_EMOTION_MODEL = os.getenv('VOICE_EMOTION_MODEL', 'kvilla')
     TEXT_EMOTION_MODEL = os.getenv('TEXT_EMOTION_MODEL', 'ollama')
     OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-    OLLAMA_TEXT_MODEL = os.getenv('OLLAMA_TEXT_MODEL', 'llama3.1:8b')
+    OLLAMA_TEXT_MODEL = os.getenv('OLLAMA_TEXT_MODEL', 'llama3.2:1b')
     OLLAMA_TIMEOUT_SECONDS = int(os.getenv('OLLAMA_TIMEOUT_SECONDS', 30))
     
     # Feature Flags

@@ -540,7 +540,7 @@ def get_youtube_suggestions():
             return jsonify({'error': 'emotion is required'}), 400
 
         ollama_url = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-        model = os.getenv('OLLAMA_TEXT_MODEL', 'llama3.1:8b')
+        model = os.getenv('OLLAMA_TEXT_MODEL', 'llama3.2:1b')
 
         prompt = (
             f"The user is feeling '{emotion}'. "
@@ -659,15 +659,19 @@ def detect_voice_emotion():
         # Get audio data (either base64 or file path)
         audio_data = data.get('audio_data')
         audio_path = data.get('audio_path')
+        max_base64_chars = 8 * 1024 * 1024  # ~6MB decoded audio max
         
         if not audio_data and not audio_path:
             return jsonify({'error': 'Either audio_data or audio_path is required'}), 400
+
+        if audio_data and len(audio_data) > max_base64_chars:
+            return jsonify({'error': 'Audio payload too large. Please record a shorter clip.'}), 413
         
         # Create temporary file if audio_data is provided
         if audio_data:
             try:
                 # Decode base64 audio
-                audio_bytes = base64.b64decode(audio_data)
+                audio_bytes = base64.b64decode(audio_data, validate=True)
                 
                 # Create temporary file
                 with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
@@ -743,13 +747,17 @@ def detect_voice_emotion_test():
 
         audio_data = data.get('audio_data')
         audio_path = data.get('audio_path')
+        max_base64_chars = 8 * 1024 * 1024  # ~6MB decoded audio max
 
         if not audio_data and not audio_path:
             return jsonify({'error': 'Either audio_data or audio_path is required'}), 400
 
+        if audio_data and len(audio_data) > max_base64_chars:
+            return jsonify({'error': 'Audio payload too large. Please record a shorter clip.'}), 413
+
         if audio_data:
             try:
-                audio_bytes = base64.b64decode(audio_data)
+                audio_bytes = base64.b64decode(audio_data, validate=True)
                 with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
                     tmp.write(audio_bytes)
                     audio_path = tmp.name

@@ -98,13 +98,16 @@ Activate it:
 
 **Windows (PowerShell):**
 ```powershell
-venv\Scripts\Activate.ps1
+cd backend
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\.venv\Scripts\Activate.ps1
+python run.py
 ```
 
 **Windows (CMD):**
 ```cmd
 venv\Scripts\activate.bat
-```
+```nd
 
 **macOS / Linux:**
 ```bash

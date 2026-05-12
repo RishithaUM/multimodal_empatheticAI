@@ -22,7 +22,7 @@ class TextEmotionTransformer:
         The `device` argument is accepted for compatibility with callers.
         """
         _ = device
-        self.model_name = model_name or os.getenv('OLLAMA_TEXT_MODEL', 'llama3.1:8b')
+        self.model_name = model_name or os.getenv('OLLAMA_TEXT_MODEL', 'llama3.2:1b')
         self.ollama_url = os.getenv('OLLAMA_URL', 'http://localhost:11434')
         self.timeout_seconds = int(os.getenv('OLLAMA_TIMEOUT_SECONDS', 30))
         self.emotion_labels = self.EMOTIONS

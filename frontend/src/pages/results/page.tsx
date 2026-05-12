@@ -159,6 +159,65 @@ function generateRecommendations(emotion: string): string[] {
 interface VideoLink { title: string; url: string; }
 interface VideoRecs { goal: string; videos: VideoLink[]; }
 
+const EMOTION_VIDEO_RECS: Record<string, VideoRecs> = {
+  fearful: {
+    goal: 'fearful support',
+    videos: [
+      { title: 'Fearful Support 1', url: 'https://youtu.be/uMS7omuVamw?si=uEgP31ZoQab_ZQkE' },
+      { title: 'Fearful Support 2', url: 'https://youtu.be/24RYHE3HlCQ?si=CZc5DA9L5PHuUaY5' },
+      { title: 'Fearful Support 3', url: 'https://youtu.be/YaEG2aWJnZ8?si=SCoHId9YooK5IWJD' },
+    ],
+  },
+  happy: {
+    goal: 'happy support',
+    videos: [
+      { title: 'Happy Support 1', url: 'https://youtu.be/r8YJKIckP-E?si=qIt90P1oLmyMioRd' },
+      { title: 'Happy Support 2', url: 'https://youtu.be/cxm0zdZDLeE?si=Ucow08sXNrz3cKB8' },
+      { title: 'Happy Support 3', url: 'https://youtu.be/ZbZSe6N_BXs?si=8WJoZZ30oRhcnHDO' },
+    ],
+  },
+  disgusted: {
+    goal: 'disgust support',
+    videos: [
+      { title: 'Disgust Support 1', url: 'https://youtu.be/4eZeZqBMhQc?si=VvF8j5sdof5InYgX' },
+      { title: 'Disgust Support 2', url: 'https://youtu.be/d-diB65scQU?si=LIHtFdopjU73n3l7' },
+      { title: 'Disgust Support 3', url: 'https://youtu.be/TUVcZfQe-Kw?si=StNSB_6lfl6ra_iI' },
+    ],
+  },
+  sad: {
+    goal: 'sad support',
+    videos: [
+      { title: 'Sad Support 1', url: 'https://youtu.be/C4bofW53sO8?si=R-Kp_MDO8zYDJ7oe' },
+      { title: 'Sad Support 2', url: 'https://youtu.be/CKATBj4xn9g?si=6m6rKvoBqrwkkCL4' },
+      { title: 'Sad Support 3', url: 'https://youtu.be/7wtfhZwyrcc?si=U1pVuxA57ZRZoEP_' },
+    ],
+  },
+  angry: {
+    goal: 'angry support',
+    videos: [
+      { title: 'Anger Relief 1', url: 'https://youtu.be/tV2Ecd7m6Tc?si=mZ0yX0RtBfw6_HcM' },
+      { title: 'Anger Relief 2', url: 'https://youtu.be/JJeDW2XNNA8?si=XOOjRlk6FmOGMpYx' },
+      { title: 'Anger Relief 3', url: 'https://youtu.be/xiNGDm5Kgjw?si=vhxwROV_1Z8JLntL' },
+    ],
+  },
+  neutral: {
+    goal: 'neutral support',
+    videos: [
+      { title: 'Neutral Support 1', url: 'https://youtu.be/bS1ePEZZCDY?si=A4s1VHVBC5bA1eH6' },
+      { title: 'Neutral Support 2', url: 'https://youtu.be/uua-9WFghbc?si=X2WSyQZj7A4RUcNF' },
+      { title: 'Neutral Support 3', url: 'https://youtu.be/7PzwOiW8-n0?si=7YJSm4KLUx2JqADd' },
+    ],
+  },
+  surprised: {
+    goal: 'surprise support',
+    videos: [
+      { title: 'Surprise Support 1', url: 'https://youtu.be/6Udxaa9K6WQ?si=w1wSNQbK3ZZuU_UQ' },
+      { title: 'Surprise Support 2', url: 'https://youtu.be/BAkqJT_sMKQ?si=tk-72FFdu07bfk6O' },
+      { title: 'Surprise Support 3', url: 'https://youtu.be/Z27CJw3qx6U?si=qI0xlBnC8UE5vNf_' },
+    ],
+  },
+};
+
 function generateFusionExplanation(fused: FusedResult): string {
   const { modalities, fusionWeights, emotion } = fused;
   if (modalities.length === 0) return 'No modalities were analyzed.';
@@ -192,25 +251,11 @@ export default function ResultsPage() {
   const insights = generateInsights(fused);
   const recommendations = generateRecommendations(fused.emotion);
   const [videoRecs, setVideoRecs] = useState<VideoRecs | null>(null);
-  const [videoRecsLoading, setVideoRecsLoading] = useState(true);
   const fusionExplanation = generateFusionExplanation(fused);
 
   useEffect(() => {
-    const emotion = fused.emotion.toLowerCase();
-    setVideoRecsLoading(true);
-    fetch('http://localhost:5000/api/emotion/youtube-suggestions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ emotion }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.videos)) {
-          setVideoRecs({ goal: `${emotion} support`, videos: data.videos });
-        }
-      })
-      .catch(() => { /* silently fail — no fallback shown */ })
-      .finally(() => setVideoRecsLoading(false));
+    const emotionKey = fused.emotion.toLowerCase();
+    setVideoRecs(EMOTION_VIDEO_RECS[emotionKey] || EMOTION_VIDEO_RECS.neutral);
   }, [fused.emotion]);
   const isRealData = !!locationState?.fused || !!locationState?.modalities;
   const emoji = emotionEmoji[fused.emotion] || '🧠';
@@ -678,6 +723,10 @@ export default function ResultsPage() {
             scores: m.scores,
           };
         });
+        // Frontend fusion weights are percentages; backend expects 0-1 fractions.
+        const normalizedWeights = Object.fromEntries(
+          Object.entries(fused.fusionWeights).map(([key, value]) => [key, value > 1 ? value / 100 : value]),
+        );
         await fetch('http://localhost:5000/api/emotion/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -685,7 +734,7 @@ export default function ResultsPage() {
             face_emotion: modalitiesPayload['face'] || null,
             voice_emotion: modalitiesPayload['voice'] || null,
             text_emotion: modalitiesPayload['text'] || null,
-            weights: fused.fusionWeights,
+            weights: normalizedWeights,
             metadata: { saved_from: 'results_page', timestamp: fused.timestamp },
           }),
         });
@@ -994,12 +1043,7 @@ export default function ResultsPage() {
                 <p className="text-white text-xs font-semibold">Watch to Help</p>
                 <span className="text-gray-500 text-xs ml-auto">AI-curated for you</span>
               </div>
-              {videoRecsLoading ? (
-                <div className="flex items-center gap-2 py-3 text-gray-500 text-xs">
-                  <i className="ri-loader-4-line animate-spin"></i>
-                  Asking AI for suggestions…
-                </div>
-              ) : videoRecs && videoRecs.videos.length > 0 ? (
+              {videoRecs && videoRecs.videos.length > 0 ? (
                 <div className="space-y-2">
                   {videoRecs.videos.map((v, i) => (
                     <a
@@ -1016,7 +1060,7 @@ export default function ResultsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-600 text-xs">Suggestions unavailable — Ollama may be offline.</p>
+                <p className="text-gray-600 text-xs">Suggestions unavailable.</p>
               )}
             </div>
           </div>

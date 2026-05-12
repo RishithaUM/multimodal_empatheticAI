@@ -80,8 +80,14 @@ async function fetchOllamaReply(
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [autoSpeakEnabled, setAutoSpeakEnabled] = useState(() => localStorage.getItem('empathai_auto_speak') !== 'false');
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => localStorage.getItem('empathai_tts_voice') || '');
   const [lastAnalysis, setLastAnalysis] = useState<FusedResult | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastSpokenMessageId = useRef<string | null>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   // Keep a rolling history for Ollama context (role/content pairs)
   const historyRef = useRef<{ role: string; content: string }[]>([]);
 
@@ -105,6 +111,79 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis?.getVoices() || [];
+      if (voices.length === 0) return;
+
+      const preferred = voices.filter((voice) => voice.lang.toLowerCase().startsWith('en'));
+      const list = preferred.length > 0 ? preferred : voices;
+      setAvailableVoices(list);
+
+      if (!selectedVoiceURI || !list.some((voice) => voice.voiceURI === selectedVoiceURI)) {
+        setSelectedVoiceURI(list[0].voiceURI);
+      }
+    };
+
+    loadVoices();
+    window.speechSynthesis?.addEventListener('voiceschanged', loadVoices);
+    return () => {
+      window.speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
+    };
+  }, [selectedVoiceURI]);
+
+  useEffect(() => {
+    localStorage.setItem('empathai_auto_speak', autoSpeakEnabled ? 'true' : 'false');
+  }, [autoSpeakEnabled]);
+
+  useEffect(() => {
+    if (selectedVoiceURI) {
+      localStorage.setItem('empathai_tts_voice', selectedVoiceURI);
+    }
+  }, [selectedVoiceURI]);
+
+  useEffect(() => {
+    const latestMessage = messages[messages.length - 1];
+    if (!latestMessage || latestMessage.role !== 'ai' || latestMessage.id === 'welcome') return;
+    if (lastSpokenMessageId.current === latestMessage.id) return;
+    if (!window.speechSynthesis) return;
+    if (!autoSpeakEnabled) return;
+
+    const utterance = new SpeechSynthesisUtterance(latestMessage.text.replace(/^⚠️\s*/, ''));
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.lang = 'en-US';
+
+    const selectedVoice = availableVoices.find((voice) => voice.voiceURI === selectedVoiceURI);
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      utterance.lang = selectedVoice.lang;
+    }
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+    };
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      currentUtteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      currentUtteranceRef.current = null;
+    };
+
+    window.speechSynthesis.cancel();
+    currentUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+    lastSpokenMessageId.current = latestMessage.id;
+
+    return () => {
+      utterance.onend = null;
+      utterance.onerror = null;
+      utterance.onstart = null;
+    };
+  }, [messages, autoSpeakEnabled, availableVoices, selectedVoiceURI]);
 
   const handleSend = useCallback(async (text: string) => {
     const userMsg: ChatMessage = {
@@ -149,6 +228,9 @@ export default function ChatPage() {
 
   const handleClearChat = useCallback(() => {
     historyRef.current = [];
+    lastSpokenMessageId.current = null;
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
     setMessages([{
       id: 'welcome',
       role: 'ai',
@@ -174,6 +256,12 @@ export default function ChatPage() {
   const handleQuickReply = useCallback((text: string) => {
     handleSend(text);
   }, [handleSend]);
+
+  const handleStopSpeaking = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    currentUtteranceRef.current = null;
+    setIsSpeaking(false);
+  }, []);
 
   return (
     <div className="h-screen flex flex-col" style={{ background: '#07070E' }}>
@@ -257,6 +345,13 @@ export default function ChatPage() {
           <ChatInput
             onSend={handleSend}
             isTyping={isTyping}
+            autoSpeakEnabled={autoSpeakEnabled}
+            onToggleAutoSpeak={() => setAutoSpeakEnabled((prev) => !prev)}
+            voices={availableVoices}
+            selectedVoiceURI={selectedVoiceURI}
+            onSelectVoice={setSelectedVoiceURI}
+            isSpeaking={isSpeaking}
+            onStopSpeaking={handleStopSpeaking}
           />
         </div>
       </div>

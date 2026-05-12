@@ -27,6 +27,19 @@ interface HistoryRow {
   raw: Record<string, unknown>;
 }
 
+function toPercent(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  const scaled = n <= 1 ? n * 100 : n;
+  return Math.max(0, Math.min(100, scaled));
+}
+
+function intensityFromValue(intensity: number): string {
+  if (intensity < 33) return 'Low';
+  if (intensity < 67) return 'Medium';
+  return 'High';
+}
+
 function parseRecord(r: Record<string, unknown>): HistoryRow {
   const createdAt = new Date((r.created_at as string) || Date.now());
   const date = createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -35,8 +48,12 @@ function parseRecord(r: Record<string, unknown>): HistoryRow {
   const modalities = (r.modalities as Record<string, unknown>) || {};
   const inputs = Object.keys(modalities).filter((k) => modalities[k]).map((k) => k.charAt(0).toUpperCase() + k.slice(1));
 
-  const intensityLabel = (r.intensity_label as string) ||
-    ((r.confidence as number) >= 80 ? 'High' : (r.confidence as number) >= 60 ? 'Medium' : 'Low');
+  const confidencePercent = toPercent(r.confidence);
+  const intensityNumeric = toPercent(r.intensity);
+  const intensityLabel =
+    (r.intensity_label as string) ||
+    (r.intensityLabel as string) ||
+    (Number.isFinite(Number(r.intensity)) ? intensityFromValue(intensityNumeric) : intensityFromValue(confidencePercent));
 
   return {
     id: r._id as string,
@@ -44,7 +61,7 @@ function parseRecord(r: Record<string, unknown>): HistoryRow {
     time,
     inputs: inputs.length ? inputs : ['Text'],
     emotion: ((r.emotion as string) || 'neutral').charAt(0).toUpperCase() + ((r.emotion as string) || 'neutral').slice(1),
-    confidence: Math.round((r.confidence as number) * (((r.confidence as number) <= 1) ? 100 : 1)),
+    confidence: Math.round(confidencePercent),
     intensity: intensityLabel,
     raw: r,
   };
@@ -86,9 +103,10 @@ export default function HistoryPage() {
             const mod = String(m.modality || '');
             return mod.charAt(0).toUpperCase() + mod.slice(1);
           });
-          const confidence = Number(r.confidence) || 0;
-          const intensity = (r.intensityLabel as string) ||
-            (confidence >= 80 ? 'High' : confidence >= 60 ? 'Medium' : 'Low');
+          const confidence = toPercent(r.confidence);
+          const intensity =
+            (r.intensityLabel as string) ||
+            (Number.isFinite(Number(r.intensity)) ? intensityFromValue(toPercent(r.intensity)) : intensityFromValue(confidence));
           const emotion = String(r.emotion || 'neutral');
           return {
             id: String(r._id || r.id || i),
@@ -96,7 +114,7 @@ export default function HistoryPage() {
             time,
             inputs: inputs.length ? inputs : ['Text'],
             emotion: emotion.charAt(0).toUpperCase() + emotion.slice(1),
-            confidence: Math.round(confidence <= 1 ? confidence * 100 : confidence),
+            confidence: Math.round(confidence),
             intensity,
             raw: r,
           } as HistoryRow;
@@ -151,15 +169,7 @@ export default function HistoryPage() {
   };
 
   const handleView = (row: HistoryRow) => {
-    navigate('/results', { state: { fused: {
-      emotion: row.emotion,
-      confidence: row.confidence,
-      intensity: row.intensity === 'High' ? 80 : row.intensity === 'Medium' ? 55 : 30,
-      intensityLabel: row.intensity,
-      modalities: row.inputs.map((inp) => ({ modality: inp.toLowerCase(), emotion: row.emotion, confidence: row.confidence, scores: [] })),
-      fusionWeights: Object.fromEntries(row.inputs.map((inp) => [inp.toLowerCase(), Math.floor(100 / row.inputs.length)])),
-      timestamp: (row.raw.created_at as string) || new Date().toISOString(),
-    }}});
+    navigate('/results', { state: { fused: buildFusedFromHistoryRow(row) } });
   };
 
   return (

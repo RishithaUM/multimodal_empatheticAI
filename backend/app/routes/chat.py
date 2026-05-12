@@ -3,13 +3,14 @@ from app.services import token_required
 from datetime import datetime
 import requests as http_requests
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 chat_bp = Blueprint('chat', __name__)
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1:8b"
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "llama3.1:8b")
 
 
 @chat_bp.after_request
@@ -54,14 +55,7 @@ def ollama_message():
 
         full_prompt = f"{system_prompt}\n\n{conversation}"
 
-        response = http_requests.post(
-            OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "prompt": full_prompt, "stream": False},
-            timeout=30,
-        )
-        response.raise_for_status()
-        result = response.json()
-        reply = (result.get('response') or '').strip()
+        reply = _query_ollama(full_prompt, history)
 
         return jsonify({
             'success': True,
@@ -74,9 +68,74 @@ def ollama_message():
         return jsonify({'error': 'Ollama is not running. Please start Ollama first.'}), 503
     except http_requests.exceptions.Timeout:
         return jsonify({'error': 'Ollama took too long to respond.'}), 504
+    except http_requests.exceptions.HTTPError as e:
+        status = e.response.status_code if e.response is not None else 500
+        if status == 404:
+            return jsonify({'error': 'Ollama endpoint not found. Ensure Ollama is running on localhost:11434 and supports /api/generate or /api/chat.'}), 502
+        return jsonify({'error': f'Ollama HTTP error: {e}'}), 502
     except Exception as e:
         logger.error(f"Ollama chat error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+def _query_ollama(full_prompt: str, history: list[dict]) -> str:
+    """Query Ollama using available API shape (/api/generate or /api/chat)."""
+    endpoints = [
+        (f"{OLLAMA_BASE_URL}/api/generate", {
+            "model": OLLAMA_MODEL,
+            "prompt": full_prompt,
+            "stream": False,
+        }, "generate"),
+        (f"{OLLAMA_BASE_URL}/api/chat", {
+            "model": OLLAMA_MODEL,
+            "stream": False,
+            "messages": [
+                *[
+                    {
+                        "role": "assistant" if turn.get("role") == "assistant" else "user",
+                        "content": turn.get("content", ""),
+                    }
+                    for turn in history[-10:]
+                ],
+                {"role": "user", "content": full_prompt},
+            ],
+        }, "chat"),
+    ]
+
+    last_error: Exception | None = None
+    for url, payload, mode in endpoints:
+        try:
+            response = http_requests.post(url, json=payload, timeout=30)
+            if response.status_code == 404:
+                # Ollama returns 404 for missing models as well as unknown endpoints.
+                try:
+                    err_text = (response.json().get('error') or '').lower()
+                except Exception:  # noqa: BLE001
+                    err_text = (response.text or '').lower()
+
+                if 'model' in err_text and 'not found' in err_text:
+                    raise http_requests.exceptions.HTTPError(
+                        f"Ollama model '{OLLAMA_MODEL}' not found. Pull it first with: ollama pull {OLLAMA_MODEL}",
+                        response=response,
+                    )
+                continue
+            response.raise_for_status()
+            result = response.json()
+
+            if mode == "generate":
+                reply = (result.get('response') or '').strip()
+            else:
+                message = result.get('message') or {}
+                reply = (message.get('content') or '').strip()
+
+            if reply:
+                return reply
+        except Exception as err:  # noqa: BLE001
+            last_error = err
+
+    if last_error is not None:
+        raise last_error
+    raise http_requests.exceptions.HTTPError("No compatible Ollama endpoint found")
 
 from typing import cast
 from app import AppFlask

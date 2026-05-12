@@ -9,6 +9,20 @@ The face emotion detection system uses a **real-time streaming architecture** wi
 - **Stability detection** requiring 10 consecutive identical emotions before finalization
 - **CLAHE brightness enhancement** for low-light scenarios
 
+
+
+
+actual face emotion work. The flow is:
+
+Receive the base64 frame from the frontend.
+Decode it into an image.
+If the frame is dark, enhance brightness with CLAHE.
+Detect faces with OpenCV Haar Cascade.
+Crop the largest detected face.
+Run DeepFace emotion analysis on that face crop.
+Return the top emotion, confidence, and all emotion scores.
+The model returns one of 7 emotions: angry, disgusted, fearful, happy, neutral, sad, surprised. Confidence comes from DeepFace’s emotion percentages, converted into a 0 to 1 range.
+
 ---
 
 ## Core Components

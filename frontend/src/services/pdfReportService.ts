@@ -1,4 +1,4 @@
-import type { FusedResult } from '@/services/emotionApi';
+import type { FusedResult, ModalityResult } from '@/services/emotionApi';
 
 const emotionColors: Record<string, string> = {
   Happy: '#00D4AA',
@@ -543,38 +543,123 @@ export function buildFusedFromHistoryRow(row: {
   emotion: string;
   confidence: number;
   intensity: string;
+  raw?: Record<string, unknown>;
 }): FusedResult {
-  const intensityValue = row.intensity === 'High' ? 80 : row.intensity === 'Medium' ? 55 : 30;
+  const raw = row.raw || {};
 
-  // Build modalities from inputs
-  const inputKeys = row.inputs.map((i) => i.toLowerCase());
-  const totalInputs = inputKeys.length;
+  const toPercent = (value: unknown): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    const scaled = n <= 1 ? n * 100 : n;
+    return Math.max(0, Math.min(100, scaled));
+  };
 
-  // Distribute fusion weights evenly
-  const baseWeight = Math.floor(100 / totalInputs);
-  const remainder = 100 - baseWeight * totalInputs;
+  const toLabel = (value: unknown): string => {
+    const s = String(value || '').trim().toLowerCase();
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Neutral';
+  };
+
+  const normalizedIntensity = Number.isFinite(Number(raw.intensity))
+    ? Math.round(toPercent(raw.intensity))
+    : row.intensity === 'High'
+    ? 80
+    : row.intensity === 'Medium'
+    ? 55
+    : 30;
+  const intensityLabel =
+    (raw.intensity_label as 'Low' | 'Medium' | 'High') ||
+    (raw.intensityLabel as 'Low' | 'Medium' | 'High') ||
+    (normalizedIntensity < 33 ? 'Low' : normalizedIntensity < 67 ? 'Medium' : 'High');
+
+  const fusionWeightsRaw = (raw.fusion_weights as Record<string, unknown>) ||
+    (raw.fusionWeights as Record<string, unknown>) ||
+    {};
+
   const fusionWeights: Record<string, number> = {};
-  inputKeys.forEach((key, idx) => {
-    fusionWeights[key] = baseWeight + (idx === 0 ? remainder : 0);
+  Object.entries(fusionWeightsRaw).forEach(([key, value]) => {
+    fusionWeights[key] = Math.round(toPercent(value));
   });
 
-  const modalities = inputKeys.map((key) => ({
-    modality: key,
-    emotion: row.emotion,
-    confidence: Math.max(60, row.confidence - Math.floor(Math.random() * 10)),
-    scores: [{ emotion: row.emotion, confidence: row.confidence }],
-  }));
+  const modalitiesField = raw.modalities;
+  const modalities: ModalityResult[] = [];
 
-  // Parse timestamp from date + time string
-  const dateStr = `${row.date} ${row.time}`;
-  const parsed = Date.parse(dateStr);
-  const timestamp = isNaN(parsed) ? Date.now() : parsed;
+  const mapScores = (scoresValue: unknown): { emotion: string; confidence: number }[] => {
+    if (Array.isArray(scoresValue)) {
+      return scoresValue
+        .map((item) => {
+          const score = item as Record<string, unknown>;
+          return {
+            emotion: toLabel(score.emotion),
+            confidence: Math.round(toPercent(score.confidence)),
+          };
+        })
+        .filter((s) => s.emotion);
+    }
+
+    if (scoresValue && typeof scoresValue === 'object') {
+      return Object.entries(scoresValue as Record<string, unknown>).map(([emotion, confidence]) => ({
+        emotion: toLabel(emotion),
+        confidence: Math.round(toPercent(confidence)),
+      }));
+    }
+
+    return [];
+  };
+
+  if (Array.isArray(modalitiesField)) {
+    modalitiesField.forEach((entry) => {
+      const m = entry as Record<string, unknown>;
+      const modality = String(m.modality || '').toLowerCase();
+      if (!modality) return;
+      modalities.push({
+        modality: modality as 'face' | 'voice' | 'text',
+        emotion: toLabel(m.emotion),
+        confidence: Math.round(toPercent(m.confidence)),
+        scores: mapScores(m.scores),
+      });
+    });
+  } else if (modalitiesField && typeof modalitiesField === 'object') {
+    Object.entries(modalitiesField as Record<string, unknown>).forEach(([modalityKey, entry]) => {
+      const modality = modalityKey.toLowerCase();
+      const m = (entry || {}) as Record<string, unknown>;
+      modalities.push({
+        modality: modality as 'face' | 'voice' | 'text',
+        emotion: toLabel(m.emotion),
+        confidence: Math.round(toPercent(m.confidence)),
+        scores: mapScores(m.scores),
+      });
+    });
+  }
+
+  if (modalities.length === 0) {
+    row.inputs.map((i) => i.toLowerCase()).forEach((modality) => {
+      modalities.push({
+        modality: modality as 'face' | 'voice' | 'text',
+        emotion: row.emotion,
+        confidence: row.confidence,
+        scores: [{ emotion: row.emotion, confidence: row.confidence }],
+      });
+    });
+  }
+
+  if (Object.keys(fusionWeights).length === 0 && modalities.length > 0) {
+    const even = Math.round(100 / modalities.length);
+    modalities.forEach((m, idx) => {
+      fusionWeights[m.modality] = idx === 0 ? 100 - even * (modalities.length - 1) : even;
+    });
+  }
+
+  const timestampSource = raw.created_at || raw.timestamp || raw.savedAt;
+  const parsedTimestamp = Number.isFinite(Number(timestampSource))
+    ? Number(timestampSource)
+    : Date.parse(String(timestampSource || `${row.date} ${row.time}`));
+  const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now();
 
   return {
-    emotion: row.emotion,
-    confidence: row.confidence,
-    intensity: intensityValue,
-    intensityLabel: row.intensity as 'High' | 'Medium' | 'Low',
+    emotion: toLabel(raw.emotion || row.emotion),
+    confidence: Math.round(toPercent(raw.confidence ?? row.confidence)),
+    intensity: normalizedIntensity,
+    intensityLabel,
     modalities,
     fusionWeights,
     timestamp,

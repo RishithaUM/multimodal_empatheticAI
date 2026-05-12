@@ -7,6 +7,7 @@ class EmotionAnalysisService:
     """Emotion detection and analysis service"""
     
     NEGATIVE_EMOTIONS = ['sad', 'anxious', 'angry', 'fearful', 'disgusted', 'distressed']
+    CONSECUTIVE_ALERT_EMOTIONS = {'sad', 'angry', 'fearful', 'fear'}
     POSITIVE_EMOTIONS = ['happy', 'excited', 'content', 'calm']
     
     def __init__(self, max_history=200):
@@ -78,38 +79,14 @@ class EmotionAnalysisService:
     def check_distress_alerts(self, emotion_data, guardian_emails=None, cooldown_minutes=10):
         """Check if emotion triggers distress alerts"""
         alerts = []
-        emotion = emotion_data.get('emotion', '')
-        intensity = emotion_data.get('intensity', 0)
-        
-        # Alert 1: High intensity negative emotion
-        if emotion.lower() in self.NEGATIVE_EMOTIONS and intensity > 80:
-            alert = {
-                'type': 'HIGH_INTENSITY',
-                'severity': 'critical' if intensity > 90 else 'warning',
-                'emotion': emotion,
-                'intensity': intensity,
-                'description': f'High intensity {emotion} detected ({intensity:.1f}%)'
-            }
-            alerts.append(alert)
-        
-        # Alert 2: Repeated negative emotions
+        # Alert: Fear/Sad/Angry repeated 3 times in a row
         repeated_negative = self._check_repeated_negative_emotions(threshold=3)
         if repeated_negative['triggered']:
             alerts.append({
                 'type': 'REPEATED_NEGATIVE',
                 'severity': 'warning',
                 'count': repeated_negative['count'],
-                'description': f"{repeated_negative['count']} consecutive negative emotions detected"
-            })
-        
-        # Alert 3: Prolonged distress (5+ negative in 30 min)
-        prolonged_distress = self._check_prolonged_distress(window_minutes=30, threshold=5)
-        if prolonged_distress['triggered']:
-            alerts.append({
-                'type': 'PROLONGED_DISTRESS',
-                'severity': 'critical',
-                'count': prolonged_distress['count'],
-                'description': f"{prolonged_distress['count']} negative emotions in last 30 minutes"
+                'description': 'Fear, Sad, or Angry detected 3 consecutive times'
             })
         
         # Apply cooldown
@@ -124,16 +101,23 @@ class EmotionAnalysisService:
         return filtered_alerts
     
     def _check_repeated_negative_emotions(self, threshold=3):
-        """Check if there are repeated negative emotions"""
+        """Check if the same alert-worthy emotion appears consecutively."""
         if len(self.emotion_history) < threshold:
             return {'triggered': False, 'count': 0}
         
         recent = list(self.emotion_history)[-threshold:]
-        negative_count = sum(1 for e in recent if e['emotion'].lower() in self.NEGATIVE_EMOTIONS)
+        recent_emotions = [str(entry.get('emotion', '')).lower() for entry in recent]
+        trigger_emotion = recent_emotions[0] if recent_emotions else ''
+
+        if not trigger_emotion or trigger_emotion not in self.CONSECUTIVE_ALERT_EMOTIONS:
+            return {'triggered': False, 'count': 0}
+
+        if any(emotion != trigger_emotion for emotion in recent_emotions):
+            return {'triggered': False, 'count': 0}
         
         return {
-            'triggered': negative_count >= threshold,
-            'count': negative_count
+            'triggered': True,
+            'count': threshold
         }
     
     def _check_prolonged_distress(self, window_minutes=30, threshold=5):
