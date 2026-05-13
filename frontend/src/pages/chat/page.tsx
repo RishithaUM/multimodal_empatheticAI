@@ -268,7 +268,6 @@ export default function ChatPage() {
       {/* Header */}
       <ChatHeader
         currentEmotion={displayEmotion}
-        wsStatus={wsStatus}
         messageCount={messages.length}
         onClearChat={handleClearChat}
         onExportChat={handleExportChat}

@@ -8,22 +8,12 @@ const emotionColors: Record<string, string> = {
 
 interface ChatHeaderProps {
   currentEmotion: FusedResult | null;
-  wsStatus: string;
   messageCount: number;
   onClearChat: () => void;
   onExportChat: () => void;
 }
 
-const wsStatusConfig: Record<string, { color: string; label: string }> = {
-  connecting: { color: '#F59E0B', label: 'Connecting' },
-  connected: { color: '#00D4AA', label: 'Live' },
-  disconnected: { color: '#6B7280', label: 'Offline' },
-  error: { color: '#EF4444', label: 'Error' },
-  simulated: { color: '#F59E0B', label: 'Simulated' },
-};
-
-export default function ChatHeader({ currentEmotion, wsStatus, messageCount, onClearChat, onExportChat }: ChatHeaderProps) {
-  const statusCfg = wsStatusConfig[wsStatus] || wsStatusConfig.disconnected;
+export default function ChatHeader({ currentEmotion, messageCount, onClearChat, onExportChat }: ChatHeaderProps) {
   const emotionColor = currentEmotion ? (emotionColors[currentEmotion.emotion] || '#6C63FF') : '#6C63FF';
 
   return (
@@ -44,16 +34,6 @@ export default function ChatHeader({ currentEmotion, wsStatus, messageCount, onC
         <div>
           <div className="flex items-center gap-2">
             <p className="text-white text-sm font-semibold">EmpathAI Assistant</p>
-            <div
-              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-              style={{ background: `${statusCfg.color}15`, border: `1px solid ${statusCfg.color}30`, color: statusCfg.color }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ background: statusCfg.color, animation: wsStatus === 'connected' || wsStatus === 'simulated' ? 'pulse 1.5s infinite' : 'none' }}
-              />
-              {statusCfg.label}
-            </div>
           </div>
           <p className="text-gray-500 text-xs mt-0.5">
             Emotion-aware · {messageCount} message{messageCount !== 1 ? 's' : ''}
