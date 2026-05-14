@@ -3,6 +3,10 @@
 EmpathAI detects human emotions in real time using **face**, **voice**, and **text** simultaneously, then fuses all three into a single confident result. It sends automated email alerts to guardians when a user shows the same distress emotion three times consecutively.
 
 ---
+## Live Working video :
+
+Drive Link :
+
 
 ## Features
 
